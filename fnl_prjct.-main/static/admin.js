@@ -5,6 +5,7 @@ let allEvents = [];
 let allParticipants = [];
 let allRegistrations = [];
 let editingEventId = null;
+let editingOriginal = null; // CHANGED: original date/time of the event being edited
 
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -28,6 +29,32 @@ function formatDateTime(value) {
     minute: "2-digit",
     hour12: true
   });
+}
+
+/* CHANGED: past-date helpers */
+function todayISO() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+function isPastDateTime(date, time) {
+  if (!date || !time) return false;
+  const when = new Date(`${date}T${time}`);
+  if (Number.isNaN(when.getTime())) return false;
+  const now = new Date();
+  now.setSeconds(0, 0); // same rule as the server: current minute is allowed
+  return when < now;
+}
+
+// New events: block past dates in the picker. Editing: no min, because
+// older events must still be editable (JS + server check changed dates).
+function applyDateMin() {
+  const dateField = getEventField("date");
+  if (!dateField) return;
+  if (editingEventId === null) dateField.min = todayISO();
+  else dateField.removeAttribute("min");
 }
 
 async function api(url, options = {}) {
@@ -223,7 +250,7 @@ $("#add-event-form")?.addEventListener("reset", () => setTimeout(syncCategoryInp
 
 function getEventField(name) {
   const form = $("#add-event-form");
-  return form.elements.namedItem(name);
+  return form ? form.elements.namedItem(name) : null; // CHANGED: null-safe
 }
 
 function openEventForm(eventData = null) {
@@ -233,6 +260,10 @@ function openEventForm(eventData = null) {
   form.reset();
   loadCategories(eventData ? eventData.category : "");
   editingEventId = eventData ? eventData.id : null;
+  // CHANGED: remember the original date/time so we only block *changed* past dates
+  editingOriginal = eventData
+    ? { date: String(eventData.date || "").slice(0, 10), time: eventData.time }
+    : null;
 
   const heading = $("#event-form-title");
   const button = $("#save-event-btn");
@@ -265,6 +296,8 @@ function openEventForm(eventData = null) {
     if (capacityField) capacityField.value = 100;
     showMessage("event-form-message", "");
   }
+
+  applyDateMin(); // CHANGED
 }
 
 async function loadDashboard() {
@@ -427,6 +460,22 @@ $("#add-event-form")?.addEventListener("submit", async (event) => {
   }
 
   const isEditing = editingEventId !== null;
+
+  // CHANGED: block past date/time before sending. When editing, only block
+  // if the date or time was actually changed (same rule as the server).
+  const dateTimeChanged =
+    !isEditing ||
+    !editingOriginal ||
+    payload.date !== editingOriginal.date ||
+    payload.time !== editingOriginal.time;
+
+  if (dateTimeChanged && isPastDateTime(payload.date, payload.time)) {
+    const msg = "Events must be scheduled for the present or future, not in the past.";
+    showMessage("event-form-message", msg, "error");
+    showToast(msg, "error");
+    return;
+  }
+
   const url = isEditing ? `/api/events/${encodeURIComponent(editingEventId)}` : "/api/events";
   const method = isEditing ? "PUT" : "POST";
 
@@ -443,7 +492,9 @@ $("#add-event-form")?.addEventListener("submit", async (event) => {
   try {
     await api(url, { method, body: JSON.stringify(payload) });
     editingEventId = null;
+    editingOriginal = null; // CHANGED
     form.reset();
+    applyDateMin(); // CHANGED
     await loadCategories();
     showToast(isEditing ? `"${payload.title}" updated successfully!` : `"${payload.title}" created successfully!`, "success");
     await loadDashboard();
@@ -855,4 +906,5 @@ $("#logout-btn")?.addEventListener("click", async () => {
 });
 
 loadCategories();
+applyDateMin(); // CHANGED
 loadDashboard();

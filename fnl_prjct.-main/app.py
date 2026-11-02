@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from itertools import groupby
+from zoneinfo import ZoneInfo  # CHANGED
 import mysql.connector
 
 from mysql.connector import pooling
@@ -26,6 +27,9 @@ ADMIN_EMAIL = os.environ.get(
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "gate2026")
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+
+# CHANGED: timezone used for all "is this in the past?" checks
+APP_TZ = ZoneInfo(os.environ.get("APP_TIMEZONE", "Asia/Manila"))
 
 DB_CONFIG = {
     "host": os.environ.get("DB_HOST", "127.0.0.1"),
@@ -54,6 +58,7 @@ PAST_EVENT_ERROR = "Events must be scheduled for the present or future, not in t
 
 _pool = None
 
+
 def _get_pool():
     global _pool
     if _pool is None:
@@ -63,6 +68,7 @@ def _get_pool():
             **DB_CONFIG,
         )
     return _pool
+
 
 @contextmanager
 def transaction():
@@ -77,6 +83,12 @@ def transaction():
     finally:
         cursor.close()
         conn.close()
+
+
+# CHANGED: defined before the classes that use it
+def _local_now():
+    """Current time in the app's timezone, as a naive datetime."""
+    return datetime.now(APP_TZ).replace(tzinfo=None)
 
 
 class BaseModel:
@@ -154,7 +166,7 @@ class UpcomingEvent(Event):
                 f"{self.get('date')} {self.get('time')}",
                 "%Y-%m-%d %H:%M",
             )
-            return event_time < datetime.now()
+            return event_time < _local_now()  # CHANGED
         except (ValueError, TypeError):
             return False
 
@@ -189,8 +201,10 @@ def _iso(value):
         return None
     return value.replace(tzinfo=timezone.utc).isoformat()
 
+
 def _utc_now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 def _fmt_time(value):
     if value is None:
@@ -202,8 +216,10 @@ def _fmt_time(value):
         return value.strftime("%H:%M")
     return str(value)[:5]
 
+
 def _parse_date(text):
     return datetime.strptime(text, "%Y-%m-%d").date()
+
 
 def _parse_time(text):
     for pattern in ("%H:%M", "%H:%M:%S"):
@@ -213,10 +229,12 @@ def _parse_time(text):
             continue
     raise ValueError("Invalid time.")
 
+
 def _is_in_past(event_date, event_time):
     # Seconds are ignored so an event set for the current minute is still allowed.
-    now = datetime.now().replace(second=0, microsecond=0)
+    now = _local_now().replace(second=0, microsecond=0)  # CHANGED
     return datetime.combine(event_date, event_time) < now
+
 
 def user_to_dict(row):
     return {
@@ -227,6 +245,7 @@ def user_to_dict(row):
         "createdAt": _iso(row["created_at"]),
     }
 
+
 EVENT_SELECT = """
     SELECT e.*,
            COALESCE((
@@ -236,6 +255,7 @@ EVENT_SELECT = """
            ), 0) AS registered
     FROM events e
 """
+
 
 def event_to_dict(row):
     event = {
@@ -254,11 +274,13 @@ def event_to_dict(row):
         event["finishedAt"] = _iso(row["finished_at"])
     return event
 
+
 REGISTRATION_SELECT = """
     SELECT r.*, e.title AS event_title
     FROM registrations r
     JOIN events e ON e.id = r.event_id
 """
+
 
 def registration_to_dict(row):
     return {
@@ -278,8 +300,10 @@ def registration_to_dict(row):
         "registeredAt": _iso(row["registered_at"]),
     }
 
+
 def _get_json():
     return request.get_json(silent=True) or {}
+
 
 def _fetch_event(cursor, event_id, lock=False):
     cursor.execute(
@@ -289,9 +313,11 @@ def _fetch_event(cursor, event_id, lock=False):
     row = cursor.fetchone()
     return event_to_dict(row) if row else None
 
+
 def _fetch_user_by_id(cursor, user_id):
     cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
     return cursor.fetchone()
+
 
 def _event_reserved_count(cursor, event_id):
     cursor.execute(
@@ -303,11 +329,14 @@ def _event_reserved_count(cursor, event_id):
         for row in cursor.fetchall()
     )
 
+
 def _is_finished(event):
     return Event.from_dict(event).is_finished()
 
+
 def _current_role():
     return session.get("role")
+
 
 def _require_login():
     if not session.get("user_id"):
@@ -316,23 +345,28 @@ def _require_login():
         return jsonify({"error": "Participant account required."}), 403
     return None
 
+
 def _require_admin():
     if _current_role() != "admin":
         return jsonify({"error": "Admin access required."}), 403
     return None
 
+
 def _safe_user(user_dict):
     return Participant(user_dict).to_public()
+
 
 @app.route("/")
 def index():
     return render_template("index.html")
+
 
 @app.route("/admin")
 def admin_page():
     if _current_role() != "admin":
         return redirect("/")
     return render_template("admin.html")
+
 
 @app.route("/api/admin/events/<event_id>/attendance-sheet", methods=["GET"])
 def generate_attendance_sheet(event_id):
@@ -371,7 +405,10 @@ def generate_attendance_sheet(event_id):
 
     grouped_participants = {}
     if participants:
-        for key, group in groupby(participants, key=lambda x: (x['year_level'], x['course'], x['section'])):
+        for key, group in groupby(
+            participants,
+            key=lambda x: (x['year_level'], x['course'], x['section'])
+        ):
             grouped_participants[key] = list(group)
 
     return render_template(
@@ -380,6 +417,7 @@ def generate_attendance_sheet(event_id):
         is_finished=event_is_finished,
         grouped_participants=grouped_participants
     )
+
 
 @app.route("/api/auth/register", methods=["POST"])
 def register_account():
@@ -441,6 +479,7 @@ def register_account():
         "role": "participant",
     }), 201
 
+
 @app.route("/api/auth/login", methods=["POST"])
 def login():
     body = _get_json()
@@ -479,6 +518,7 @@ def login():
         "user": _safe_user(user_to_dict(user)),
     })
 
+
 @app.route("/api/auth/me", methods=["GET"])
 def get_current_user():
     role = _current_role()
@@ -493,15 +533,18 @@ def get_current_user():
         session.clear()
     return jsonify({"authenticated": False, "role": None, "user": None})
 
+
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
     session.clear()
     return jsonify({"message": "Logged out successfully."})
 
+
 @app.route("/api/admin/logout", methods=["POST"])
 def admin_logout():
     session.clear()
     return jsonify({"ok": True})
+
 
 @app.route("/api/events", methods=["GET"])
 def get_events():
@@ -515,12 +558,14 @@ def get_events():
         events.append(event)
     return jsonify(events)
 
+
 @app.route("/api/categories", methods=["GET"])
 def get_categories():
     with transaction() as cursor:
         cursor.execute("SELECT DISTINCT category FROM events ORDER BY category")
         names = [row["category"] for row in cursor.fetchall()]
     return jsonify(names)
+
 
 @app.route("/api/events", methods=["POST"])
 def create_event():
@@ -543,6 +588,10 @@ def create_event():
         capacity = int(body.get("capacity", 1))
     except (ValueError, TypeError):
         return jsonify({"error": "Capacity must be a whole number."}), 400
+
+    # CHANGED: capacity must be at least 1
+    if capacity < 1:
+        return jsonify({"error": "Capacity must be at least 1."}), 400
 
     try:
         event_date = _parse_date(date)
@@ -570,6 +619,7 @@ def create_event():
         event = _fetch_event(cursor, event_id)
     return jsonify(event), 201
 
+
 @app.route("/api/events/<event_id>", methods=["PUT"])
 def update_event(event_id):
     permission_error = _require_admin()
@@ -591,6 +641,10 @@ def update_event(event_id):
         capacity = int(body.get("capacity"))
     except (ValueError, TypeError):
         return jsonify({"error": "Capacity must be a whole number."}), 400
+
+    # CHANGED: capacity must be at least 1
+    if capacity < 1:
+        return jsonify({"error": "Capacity must be at least 1."}), 400
 
     try:
         event_date = _parse_date(date)
@@ -632,6 +686,7 @@ def update_event(event_id):
         event = _fetch_event(cursor, event_id)
     return jsonify({"message": "Event updated successfully.", "event": event})
 
+
 @app.route("/api/events/<event_id>", methods=["DELETE"])
 def delete_event(event_id):
     permission_error = _require_admin()
@@ -649,6 +704,7 @@ def delete_event(event_id):
 
         cursor.execute("DELETE FROM events WHERE id = %s", (event_id,))
     return jsonify({"message": "Event deleted successfully."})
+
 
 @app.route("/api/events/<event_id>/finish", methods=["POST"])
 def finish_event(event_id):
@@ -669,6 +725,7 @@ def finish_event(event_id):
             return jsonify({"error": "Event not found."}), 404
     return jsonify({"message": "Event marked as finished."})
 
+
 @app.route("/api/events/<event_id>/reopen", methods=["POST"])
 def reopen_event(event_id):
     permission_error = _require_admin()
@@ -688,6 +745,7 @@ def reopen_event(event_id):
             return jsonify({"error": "Event not found."}), 404
     return jsonify({"message": "Event reopened."})
 
+
 @app.route("/api/admin/users", methods=["GET"])
 def get_participant_accounts():
     permission_error = _require_admin()
@@ -699,6 +757,7 @@ def get_participant_accounts():
         users = [_safe_user(user_to_dict(row)) for row in cursor.fetchall()]
     return jsonify(users)
 
+
 @app.route("/api/admin/registrations", methods=["GET"])
 def get_all_registrations():
     permission_error = _require_admin()
@@ -709,6 +768,7 @@ def get_all_registrations():
         cursor.execute(REGISTRATION_SELECT + " ORDER BY r.registered_at")
         registrations = [registration_to_dict(row) for row in cursor.fetchall()]
     return jsonify(registrations)
+
 
 @app.route("/api/events/<event_id>/register", methods=["POST"])
 def reserve_spot(event_id):
@@ -749,7 +809,10 @@ def reserve_spot(event_id):
             if _is_finished(event):
                 return jsonify({"error": "This event has already finished."}), 400
 
-            cursor.execute("SELECT 1 FROM registrations WHERE event_id = %s AND user_id = %s", (event_id, user_id))
+            cursor.execute(
+                "SELECT 1 FROM registrations WHERE event_id = %s AND user_id = %s",
+                (event_id, user_id),
+            )
             if cursor.fetchone():
                 return jsonify({"error": "You have already registered for this event."}), 409
 
@@ -783,6 +846,7 @@ def reserve_spot(event_id):
         "registration": registration,
     }), 201
 
+
 @app.route("/api/my-registrations", methods=["GET"])
 def get_my_registrations():
     permission_error = _require_login()
@@ -790,9 +854,13 @@ def get_my_registrations():
         return permission_error
 
     with transaction() as cursor:
-        cursor.execute(REGISTRATION_SELECT + " WHERE r.user_id = %s ORDER BY r.registered_at", (session["user_id"],))
+        cursor.execute(
+            REGISTRATION_SELECT + " WHERE r.user_id = %s ORDER BY r.registered_at",
+            (session["user_id"],),
+        )
         registrations = [registration_to_dict(row) for row in cursor.fetchall()]
     return jsonify(registrations)
+
 
 @app.route("/api/registrations/<registration_id>/cancel", methods=["POST"])
 def cancel_registration(registration_id):
@@ -802,7 +870,10 @@ def cancel_registration(registration_id):
 
     user_id = session["user_id"]
     with transaction() as cursor:
-        cursor.execute(REGISTRATION_SELECT + " WHERE r.id = %s AND r.user_id = %s", (registration_id, user_id))
+        cursor.execute(
+            REGISTRATION_SELECT + " WHERE r.id = %s AND r.user_id = %s",
+            (registration_id, user_id),
+        )
         row = cursor.fetchone()
         if not row:
             return jsonify({"error": "Registration not found."}), 404
@@ -815,6 +886,7 @@ def cancel_registration(registration_id):
 
         cursor.execute("DELETE FROM registrations WHERE id = %s", (registration_id,))
     return jsonify({"message": "Reservation cancelled."})
+
 
 @app.route("/api/admin/registrations/<registration_id>/attendance", methods=["POST"])
 def update_attendance(registration_id):
@@ -829,7 +901,10 @@ def update_attendance(registration_id):
         return jsonify({"error": "Invalid attendance status."}), 400
 
     with transaction() as cursor:
-        cursor.execute("UPDATE registrations SET attendance_status = %s WHERE id = %s", (status, registration_id))
+        cursor.execute(
+            "UPDATE registrations SET attendance_status = %s WHERE id = %s",
+            (status, registration_id),
+        )
         cursor.execute(REGISTRATION_SELECT + " WHERE r.id = %s", (registration_id,))
         row = cursor.fetchone()
         if not row:
