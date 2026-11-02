@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COLLEGE OF COMPUTER STUDIES | Admin Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+</head>
+
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <h2>COLLEGE OF COMPUTER STUDIES</h2>
+      <p>Event Management System</p>
+    </div>
+
+    <div class="nav-label">ADMIN MENU</div>
+
+    <nav class="nav-menu">
+      <button class="nav-item active" data-tab="dashboard">▦ Dashboard</button>
+      <button class="nav-item" data-tab="events">▣ Events</button>
+      <button class="nav-item" data-tab="participants">♙ Student Account</button>
+      <button class="nav-item" data-tab="registrations">☷ Registrations</button>
+      <button class="nav-item" data-tab="finished">✔ Finished Events</button>
+      <button class="nav-item" data-tab="attendance">✓ Attendance</button>
+    </nav>
+
+    <div class="sidebar-bottom" style="position: relative;">
+      <div class="account-menu" id="account-menu" hidden style="position: absolute; left: 4px; right: 4px; bottom: calc(100% + 8px); z-index: 20; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 28px rgba(33, 11, 44, 0.28);">
+        <button type="button" class="account-menu-item" id="logout-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: transparent; color: var(--red); border: 0; border-radius: 8px; font: inherit; font-weight: 600; text-align: left; cursor: pointer;">↪ Log out</button>
+      </div>
+
+      <button type="button" class="account-btn" id="account-btn"
+              aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu">
+        <span class="account-avatar">A</span>
+        <span class="account-name">Admin</span>
+        <span class="account-caret">⌃</span>
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">Dashboard</h1>
+        <p>Welcome to your event management dashboard.</p>
+      </div>
+      <span class="admin-label">ADMIN PANEL</span>
+    </header>
+
+    <!-- DASHBOARD -->
+    <section class="view" data-view="dashboard">
+      <div class="stats">
+        <div class="stat-card"><p>Total Events</p><h2 id="total-events">0</h2></div>
+        <div class="stat-card"><p>Total Students Account</p><h2 id="total-participants">0</h2></div>
+        <div class="stat-card"><p>Total Registrations</p><h2 id="total-registrations">0</h2></div>
+        <div class="stat-card"><p>Attended</p><h2 id="total-attendance">0</h2></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Upcoming Events</h2>
+          <button class="btn btn-outline" data-go="events">View Events</button>
+        </div>
+        <div id="dashboard-events" class="event-list">
+          <div class="empty">Loading events...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADD EVENT -->
+    <section class="view" data-view="add-event" hidden>
+      <div class="panel">
+        <div class="panel-heading"><h2 id="event-form-title">Create New Event</h2></div>
+        <form id="add-event-form">
+          <div class="form-grid">
+            <div class="field full"><label for="event-title">Event Title *</label><input id="event-title" name="title" maxlength="150" required></div>
+            <div class="field">
+              <label for="event-category">Category *</label>
+              <select id="event-category" name="category" required>
+                <option value="">-- Select Existing Category --</option>
+                <option value="__new__">+ Add New Category...</option>
+              </select>
+              <input id="event-category-new" type="text" maxlength="50" placeholder="Type the new category name" style="margin-top:10px" hidden>
+            </div>
+            <div class="field"><label for="event-date">Date *</label><input id="event-date" name="date" type="date" required></div>
+            <div class="field"><label for="event-time">Time *</label><input id="event-time" name="time" type="time" required></div>
+            <div class="field"><label for="event-location">Location *</label><input id="event-location" name="location" maxlength="200" required></div>
+            <div class="field"><label for="event-capacity">Capacity *</label><input id="event-capacity" name="capacity" type="number" min="1" step="1" value="100" required></div>
+            <div class="field full"><label for="event-description">Description</label><textarea id="event-description" name="description" placeholder="Enter event details..."></textarea></div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-gold" id="save-event-btn">Save Event</button>
+            <button type="reset" class="btn btn-outline">Clear Form</button>
+          </div>
+          <p class="message" id="event-form-message" role="status"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- EVENTS -->
+    <section class="view" data-view="events" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Manage Events</h2>
+          <button class="btn btn-gold" data-go="add-event">＋ Add Event</button>
+        </div>
+        <div class="toolbar">
+          <input class="search-input" id="event-search" placeholder="Search by title, category, or location...">
+          <button class="btn btn-outline" id="refresh-events-btn">Refresh</button>
+        </div>
+        <p class="message" id="events-message" role="status"></p>
+        <div class="event-list" id="events-list"><div class="empty">Loading events...</div></div>
+      </div>
+    </section>
+
+    <!-- FINISHED EVENTS -->
+    <section class="view" data-view="finished" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Finished Events (Records)</h2>
+          <button class="btn btn-outline" id="refresh-finished-btn">Refresh</button>
+        </div>
+        <div class="toolbar"><input class="search-input" id="finished-search" placeholder="Search finished events..."></div>
+        <p class="message" id="finished-message" role="status"></p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Title</th><th>Category</th><th>Date</th><th>Location</th><th>Registered</th><th>Attended</th><th>Action</th></tr></thead>
+            <tbody id="finished-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- PARTICIPANTS -->
+    <section class="view" data-view="participants" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Participants</h2>
+          <button class="btn btn-outline" id="refresh-participants-btn">Refresh</button>
+        </div>
+        <div class="toolbar">
+          <input class="search-input" id="participant-search" placeholder="Search participants...">
+        </div>
+        <p class="message" id="participants-message" role="status"></p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Student ID</th><th>Role</th><th></th></tr></thead>
+            <tbody id="participants-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- REGISTRATIONS -->
+    <section class="view" data-view="registrations" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Event Registrations</h2>
+          <button class="btn btn-outline" id="refresh-registrations-btn">Refresh</button>
+        </div>
+        <div class="toolbar">
+          <input class="search-input" id="registration-search" placeholder="Search name, event, course, section, or email...">
+
+          <select class="filter-select" id="registration-event">
+            <option value="">All Events</option>
+          </select>
+
+          <select class="filter-select" id="registration-year">
+            <option value="">All Year Levels</option>
+            <option value="1st Year">1st Year</option>
+            <option value="2nd Year">2nd Year</option>
+            <option value="3rd Year">3rd Year</option>
+            <option value="4th Year">4th Year</option>
+          </select>
+
+          <select class="filter-select" id="registration-section">
+            <option value="">All Sections</option>
+          </select>
+        </div>
+        <p class="message" id="registrations-message" role="status"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Participant</th><th>Email</th><th>Event</th>
+                <th>Course</th><th>Section</th><th>Year</th>
+                <th>Will Attend</th><th>Registration Date</th>
+              </tr>
+            </thead>
+            <tbody id="registrations-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ATTENDANCE -->
+    <section class="view" data-view="attendance" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Attendance Management</h2>
+          <button class="btn btn-outline" id="refresh-attendance-btn">Refresh</button>
+        </div>
+        <div class="toolbar"><input class="search-input" id="attendance-search" placeholder="Search participant or event..."></div>
+        <p class="message" id="attendance-message" role="status"></p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Participant</th><th>Event</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="attendance-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- FINISHED EVENT DETAILS -->
+<div class="details-overlay" id="event-details-modal" hidden>
+  <div class="details-modal" role="dialog" aria-modal="true">
+    <div class="details-head">
+      <div><span class="status">Finished</span><h2 id="details-title"></h2></div>
+      <button type="button" class="details-close" id="details-close-btn">✕</button>
+    </div>
+    <dl class="details-list" id="details-body"></dl>
+    <div class="details-footer"><button type="button" class="btn btn-outline" id="details-done-btn">Close</button></div>
+  </div>
+</div>
+
+<!-- CONFIRMATION DIALOG -->
+<div class="details-overlay" id="confirm-modal" hidden>
+  <div class="details-modal confirm-modal" role="alertdialog">
+    <h2 id="confirm-title">Confirm</h2>
+    <p id="confirm-message"></p>
+    <div class="details-footer">
+      <button type="button" class="btn btn-outline" id="confirm-cancel-btn">Cancel</button>
+      <button type="button" class="btn btn-gold" id="confirm-ok-btn">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.getElementById('account-btn');
+    var menu = document.getElementById('account-menu');
+    if (!btn || !menu) return;
+
+    function setOpen(open) {
+      menu.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+    }
+
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      setOpen(menu.hidden);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!menu.contains(e.target) && !btn.contains(e.target)) {
+        setOpen(false);
+      }
+    });
+  });
+</script>
+
+<script src="{{ url_for('static', filename='admin.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% if is_finished %}Official Attendance List{% else %}Attendance Sheet{% endif %} - {{ event.title }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; color: #210B2C; }
+        .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #210B2C; padding-bottom: 8px; }
+        .header h2 { margin: 0; font-size: 16pt; text-transform: uppercase; }
+        .header h3 { margin: 5px 0; font-size: 13pt; color: #4A2A6B; }
+        .event-info { margin-bottom: 15px; font-size: 10pt; line-height: 1.5; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        th, td { border: 1px solid #333; padding: 8px; font-size: 10pt; }
+        th { background-color: #f0e6fa; text-align: left; }
+        
+        .section-page { page-break-before: always; }
+        .section-page:first-of-type { page-break-before: avoid; }
+        
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="margin-bottom: 15px;">
+        <button onclick="window.print()" style="padding: 8px 16px; font-size: 14px; cursor: pointer; background: #210B2C; color: #fff; border: none; border-radius: 4px;">🖨️ Print / Save as PDF</button>
+    </div>
+    
+    {% if not grouped_participants %}
+        <p style="text-align:center; padding: 20px;">
+            {% if is_finished %}No attended participants recorded for this event.{% else %}No registered participants for this event yet.{% endif %}
+        </p>
+    {% else %}
+        {% for key, group_list in grouped_participants.items() %}
+            {% set year_level, course, section = key %}
+            <div class="section-page">
+                <div class="header">
+                    <h2>College of Computer Studies</h2>
+                    <h3>{% if is_finished %}Official Attendance List{% else %}Event Attendance Sheet{% endif %}</h3>
+                </div>
+                <div class="event-info">
+                    <strong>Event Title:</strong> {{ event.title }}<br>
+                    <strong>Date & Time:</strong> {{ event.date }} | {{ event.time }}<br>
+                    <strong>Location:</strong> {{ event.location }}<br>
+                    <strong>Classification:</strong> {{ course }} {{ year_level }} — Section {{ section }}
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 5%; text-align: center;">#</th>
+                            <th style="width: 20%;">Student ID</th>
+                            <th style="width: 40%;">Name of Participant</th>
+                            <th style="width: 20%;">Course, Year & Section</th>
+                            {% if not is_finished %}
+                            <th style="width: 15%;">Signature</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in group_list %}
+                        <tr>
+                            <td style="text-align: center;">{{ loop.index }}</td>
+                            <td>{{ p.student_id }}</td>
+                            <td><strong>{{ p.name }}</strong></td>
+                            <td>{{ p.course }} {{ p.year_level }} - {{ p.section }}</td>
+                            {% if not is_finished %}
+                            <td style="height: 35px;"></td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <script>window.onload = function() { window.print(); };</script>
+</body>
+</html>

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COLLEGE OF COMPUTER STUDIES | Event Hub</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+
+<body class="app-body">
+
+  <!-- Sign in for everyone: admins and participants use this one form -->
+  <section id="auth-view">
+    <div class="login-shell">
+      <div class="login-art">
+        <div class="login-art-content">
+          <div class="login-brand">
+            <img src="{{ url_for('static', filename='ccs-logo.png') }}" alt="CCS Logo" class="login-logo-img">
+            <span>College of Computer Studies<br>Event Hub</span>
+          </div>
+
+          <h2 id="art-title">Welcome!</h2>
+          <p id="art-text">Sign in to access your existing account and join school events.</p>
+
+          <ul class="login-features">
+            <li><span>▦</span> Browse upcoming school events</li>
+            <li><span>✦</span> Register in just a few taps</li>
+            <li><span>✓</span> Track your attendance</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="login-panel">
+        <h1 id="auth-title">Sign In</h1>
+        <p id="auth-subtitle">Log in to discover and register for events.</p>
+
+        <div class="tabbar">
+          <button type="button" class="tab active" id="login-tab">LOGIN</button>
+          <button type="button" class="tab" id="signup-tab">SIGN UP</button>
+        </div>
+
+        <form id="auth-form">
+          <div class="field" id="student-id-field" hidden>
+            <label for="auth-student-id" class="required">Student ID Number</label>
+            <div class="input-with-icon">
+              <span class="field-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.5-1.5 1.7-2 3-2s2.5.5 3 2M15 10h3M15 14h3"/></svg>
+              </span>
+              <input id="auth-student-id" name="student_id" inputmode="numeric" placeholder="Student ID (e.g. 0000-1000)" maxlength="9" autocomplete="off">
+            </div>
+            <p class="field-hint">Format: 000-1000 (8 digits)</p>
+          </div>
+
+          <div class="field" id="name-field" hidden>
+            <label for="auth-name" class="required">Full Name</label>
+            <div class="input-with-icon">
+              <span class="field-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+              </span>
+              <input id="auth-name" name="name" placeholder="Full name" maxlength="100">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="auth-email" class="required">Email Address</label>
+            <div class="input-with-icon">
+              <span class="field-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+              </span>
+              <input id="auth-email" name="email" type="email" required maxlength="254" placeholder="Email address">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="auth-password" class="required">Password</label>
+            <div class="input-with-icon">
+              <span class="field-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              </span>
+              <input id="auth-password" name="password" type="password" required minlength="8" placeholder="Password">
+              <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Show password">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="eye-slash" d="M4 4l16 16"/></svg>
+              </button>
+            </div>
+            <p class="field-hint" id="password-hint" hidden>Minimum of 8 characters.</p>
+          </div>
+
+          <div class="login-options" id="login-options">
+            <button type="button" class="forgot-link" id="forgot-btn">Forgot password?</button>
+          </div>
+
+          <div id="auth-error" class="form-err" hidden></div>
+          <button type="submit" class="btn btn-gold submit-btn" id="auth-submit">Login</button>
+        </form>
+
+        <p class="auth-switch">
+          <span id="auth-switch-text">New here?</span>
+          <button type="button" id="auth-switch-btn">Create an Account</button>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Participant Dashboard -->
+  <div class="app-layout" id="participant-app" hidden>
+    <aside class="sidebar">
+      <a class="sidebar-brand" href="#" data-go-tab="dashboard">
+        <img src="{{ url_for('static', filename='ccs-logo.png') }}" alt="CCS Logo" class="sidebar-logo-img" style="width: 38px; height: 38px; object-fit: cover; border-radius: 50%;">
+        <div class="sidebar-brand-text">
+          <strong>COLLEGE OF</strong>
+          <span>COMPUTER STUDIES</span>
+        </div>
+      </a>
+
+      <div class="sidebar-label">PARTICIPANT MENU</div>
+
+      <nav class="sidebar-nav">
+        <button class="side-link" data-tab="profile">
+          <span class="side-icon">♙</span><span>My Profile</span>
+        </button>
+        <button class="side-link active" data-tab="dashboard">
+          <span class="side-icon">◫</span><span>Dashboard</span>
+        </button>
+        <button class="side-link" data-tab="events">
+          <span class="side-icon">▦</span><span>Browse Events</span>
+        </button>
+        <button class="side-link" data-tab="mine">
+          <span class="side-icon">▤</span><span>My Registrations</span>
+        </button>
+        <button class="side-link" data-tab="attended">
+          <span class="side-icon">✓</span><span>Attended Events</span>
+        </button>
+      </nav>
+
+      <!-- Account button & Logout menu -->
+      <div style="position: relative; margin-top: auto; padding: 14px 4px 0; border-top: 1px solid rgba(255, 255, 255, 0.2);">
+        <div class="account-menu" id="account-menu" hidden style="position: absolute; left: 4px; right: 4px; bottom: calc(100% + 8px); z-index: 20; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 28px rgba(33, 11, 44, 0.28);">
+          <button type="button" class="account-menu-item" id="sidebar-logout-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: transparent; color: var(--red); border: 0; border-radius: 8px; font: inherit; font-weight: 600; text-align: left; cursor: pointer;">↪ Log out</button>
+        </div>
+
+        <button type="button" class="account-btn" id="account-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: transparent; color: #fff; border: 0; border-radius: 10px; font: inherit; font-weight: 500; text-align: left; cursor: pointer;">
+          <span class="account-avatar" id="account-avatar-initial" style="display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%; background: var(--gold); color: var(--navy-dark); font-family: Georgia, serif; font-size: 0.95rem; font-weight: 700; text-transform: uppercase;">U</span>
+          <span class="account-name" id="sidebar-user-name" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 0.92rem; font-weight: 600;">User</span>
+          <span class="account-caret" style="color: #E8D9F7; font-size: 0.8rem; transition: transform 0.15s;">⌃</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="topbar-heading">
+          <div class="eyebrow">YOUR EVENT SPACE</div>
+          <h1 id="page-heading">Dashboard<span>.</span></h1>
+        </div>
+
+        <div class="topbar-actions">
+          <label class="search-wrap" id="search-wrap" hidden>
+            <span>⌕</span>
+            <input class="search" id="search" placeholder="Search events..." autocomplete="off">
+          </label>
+          <span id="header-user" class="header-user"></span>
+        </div>
+      </header>
+
+      <div class="main-content">
+        <section class="welcome-banner" id="welcome-banner">
+          <div class="welcome-copy">
+            <div class="welcome-kicker">DISCOVER · CONNECT · EXPERIENCE</div>
+            <h2>Your next great<br>experience awaits.</h2>
+            <p>Find events worth showing up for.</p>
+            <button class="btn btn-gold" data-go-tab="events" type="button">
+              Explore Events <span>→</span>
+            </button>
+          </div>
+          <div class="welcome-decoration" aria-hidden="true">
+            <div class="decoration-ring ring-one"></div>
+            <div class="decoration-ring ring-two"></div>
+            <div class="decoration-star">✳</div>
+            <div class="decoration-caption">MAKE IT<br>MEMORABLE</div>
+          </div>
+        </section>
+
+        <!-- Pure Stat Cards na lang ang laman ng Dashboard -->
+        <section id="dashboard-view">
+          <div class="stats-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+            <article class="dashboard-card">
+              <div class="stat-card-top"><span class="stat-card-icon">▦</span><span class="stat-card-label">EVENTS</span></div>
+              <div class="stat-card-number" id="stat-events">0</div>
+              <div class="stat-card-footer">Upcoming events available</div>
+            </article>
+            <article class="dashboard-card">
+              <div class="stat-card-top"><span class="stat-card-icon">✦</span><span class="stat-card-label">MY REGISTRATIONS</span></div>
+              <div class="stat-card-number" id="stat-mine">0</div>
+              <div class="stat-card-footer">Your current reservations</div>
+            </article>
+          </div>
+        </section>
+
+        <section id="events-view" hidden>
+          <div id="filters-row" class="filters-container"></div>
+          <div class="content-section">
+            <div class="section-heading" style="margin-bottom: 16px;">
+              <div></div>
+              <span class="count" id="events-count"></span>
+            </div>
+            <div id="grid" class="grid"></div>
+          </div>
+        </section>
+
+        <section id="mine-view" hidden>
+          <div class="content-section">
+            <div id="mine-list"></div>
+          </div>
+        </section>
+
+        <section id="profile-view" hidden>
+          <div class="content-section">
+            <div id="profile-content"></div>
+          </div>
+        </section>
+
+        <section id="attended-view" hidden>
+          <div class="content-section">
+            <div id="attended-list"></div>
+          </div>
+        </section>
+
+        <footer class="app-footer">
+          <span>COLLEGE OF COMPUTER STUDIES</span>
+          <span>DISCOVER SOMETHING EXTRAORDINARY.</span>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+
+  <!-- CONFIRMATION DIALOG (Log out modal para sa user view) -->
+  <div class="overlay" id="user-confirm-modal" hidden>
+    <div class="modal" style="max-width: 420px; padding: 24px;">
+      <h2 style="margin: 0 0 8px; color: var(--navy); font-family: Georgia, serif; font-size: 1.4rem;">Log out?</h2>
+      <p style="margin: 0; color: var(--muted); line-height: 1.6;">You will need to sign in again to access your account.</p>
+      <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-ghost" id="user-logout-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-gold" id="user-logout-ok-btn">Yes, Log out</button>
+      </div>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('account-btn');
+      var menu = document.getElementById('account-menu');
+      if (!btn || !menu) return;
+
+      function setOpen(open) {
+        menu.hidden = !open;
+        btn.setAttribute('aria-expanded', String(open));
+      }
+
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        setOpen(menu.hidden);
+      });
+
+      document.addEventListener('click', function (e) {
+        if (!menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !menu.hidden) {
+          setOpen(false);
+          btn.focus();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
