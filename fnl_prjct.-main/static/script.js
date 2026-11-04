@@ -12,6 +12,9 @@
   let searchTerm = '';
   let activeTab = 'dashboard';
 
+  // BACK: tabs that can be stored in browser history
+  const VALID_TABS = ['dashboard', 'events', 'mine', 'profile', 'attended'];
+
   // ----- input rules -----
   // Student ID: numbers only (hyphens allowed, e.g. 2023-00123).
   // Name: letters only (spaces, periods, apostrophes and hyphens allowed).
@@ -409,7 +412,8 @@
 
       // Admins use the same form and are sent to the admin page.
       if (userData.role === 'admin') {
-        window.location.href = '/admin';
+        // BACK: replace() so the login page isn't kept in history
+        window.location.replace('/admin');
         return;
       }
 
@@ -420,6 +424,10 @@
       currentUser = userData.user;
 
       await loadData();
+
+      // BACK: start every login on the dashboard, and record it in history
+      activeTab = 'dashboard';
+      history.replaceState({ tab: 'dashboard' }, '', '#dashboard');
 
       showApp();
       renderAll();
@@ -474,31 +482,23 @@
     });
   }
 
+  // BACK: one logout function for both Logout buttons.
+  // No toast and no delay: log out, then go straight to the sign-in page.
+  // replace() keeps the logged-in page out of the history.
+  async function logout() {
+    try {
+      await api('/api/auth/logout', { method: 'POST', body: '{}' });
+      window.location.replace('/');
+    } catch (error) {
+      showToast(error.message || 'Unable to log out.', 'error');
+    }
+  }
+
   // Sidebar Logout Button na may confirmation modal
   $('#sidebar-logout-btn').addEventListener('click', async () => {
     const confirmed = await confirmUserLogout();
     if (!confirmed) return;
-
-    try {
-      await api('/api/auth/logout', {
-        method: 'POST',
-        body: '{}'
-      });
-    } catch (error) {
-      showToast(error.message, 'error');
-      return;
-    }
-
-    currentUser = null;
-    events = [];
-    registrations = [];
-    categories = [];
-    activeTab = 'dashboard';
-
-    showAuth();
-    setAuthMode('login');
-
-    showToast('You have been logged out successfully.');
+    await logout();
   });
 
   async function loadData() {
@@ -807,6 +807,37 @@
     $('#welcome-banner').hidden = activeTab !== 'dashboard';
   }
 
+  // BACK: switch tab and record it in browser history.
+  // nav = "push"    -> new history entry (default)
+  //       "replace" -> overwrite the current entry
+  function setTab(tab, { nav = 'push' } = {}) {
+    if (!VALID_TABS.includes(tab)) tab = 'dashboard';
+
+    if (nav === 'replace') {
+      history.replaceState({ tab }, '', '#' + tab);
+    } else if (tab !== activeTab) {
+      history.pushState({ tab }, '', '#' + tab);
+    }
+
+    activeTab = tab;
+    updateActiveTab();
+  }
+
+  // BACK: browser Back / Forward
+  window.addEventListener('popstate', (event) => {
+    // Close the registration popup and the logout dialog if they are open
+    $('#modal-root').innerHTML = '';
+    const logoutModal = $('#user-confirm-modal');
+    if (logoutModal) logoutModal.hidden = true;
+
+    // Only switch tabs while someone is logged in
+    if (!currentUser) return;
+
+    const wanted = (event.state && event.state.tab) || location.hash.slice(1);
+    activeTab = VALID_TABS.includes(wanted) ? wanted : 'dashboard';
+    updateActiveTab();
+  });
+
   function renderAll() {
     renderStats();
     renderFilters();
@@ -818,30 +849,16 @@
   }
 
   // Logout mula sa Topbar user name button
-  const headerLogoutBtn = document.getElementById("header-logout-btn");
-  const userConfirmModal = document.getElementById("user-confirm-modal");
-  const userLogoutCancelBtn = document.getElementById("user-logout-cancel-btn");
-  const userLogoutOkBtn = document.getElementById("user-logout-ok-btn");
+  // BACK: uses the same confirm dialog + logout() as the sidebar button.
+  // (Before, this file added a second OK-button listener to the same dialog,
+  // so one click ran two logouts and showed the success toast.)
+  const headerLogoutBtn = document.getElementById('header-logout-btn');
 
-  if (headerLogoutBtn && userConfirmModal) {
-    headerLogoutBtn.addEventListener("click", () => {
-      userConfirmModal.hidden = false;
-    });
-
-    userLogoutCancelBtn?.addEventListener("click", () => {
-      userConfirmModal.hidden = true;
-    });
-
-    userLogoutOkBtn?.addEventListener("click", async () => {
-      userLogoutOkBtn.disabled = true;
-      try {
-        await api("/api/auth/logout", { method: "POST" });
-        showToast("Logged out successfully.", "success", 1500);
-        setTimeout(() => { window.location.href = "/"; }, 1500);
-      } catch (error) {
-        showToast(error.message || "Unable to log out.", "error");
-        userLogoutOkBtn.disabled = false;
-      }
+  if (headerLogoutBtn) {
+    headerLogoutBtn.addEventListener('click', async () => {
+      const confirmed = await confirmUserLogout();
+      if (!confirmed) return;
+      await logout();
     });
   }
 
@@ -945,8 +962,18 @@
       </div>
     `;
 
+    // BACK: the popup gets its own history entry, so Back closes it
+    // instead of leaving the page.
+    history.pushState({ tab: activeTab, modal: true }, '', '#' + activeTab);
+
+    // BACK: closing goes back one history step (the popstate handler above
+    // clears the popup). If there is no popup entry, just clear it.
     const close = () => {
-      $('#modal-root').innerHTML = '';
+      if (history.state && history.state.modal) {
+        history.back();
+      } else {
+        $('#modal-root').innerHTML = '';
+      }
     };
 
     $('#registration-close').addEventListener('click', close);
@@ -1031,18 +1058,17 @@
     });
   }
 
+  // BACK: sidebar and dashboard links now go through setTab()
   document.querySelectorAll('.side-link').forEach(button => {
     button.addEventListener('click', () => {
-      activeTab = button.dataset.tab;
-      updateActiveTab();
+      setTab(button.dataset.tab);
     });
   });
 
   document.querySelectorAll('[data-go-tab]').forEach(button => {
     button.addEventListener('click', event => {
       event.preventDefault();
-      activeTab = button.dataset.goTab;
-      updateActiveTab();
+      setTab(button.dataset.goTab);
     });
   });
 
@@ -1058,13 +1084,20 @@
       const data = await api('/api/auth/me');
 
       if (data.role === 'admin') {
-        window.location.href = '/admin';
+        // BACK: replace() so this page isn't kept in history
+        window.location.replace('/admin');
         return;
       }
 
       if (data.role === 'participant' && data.user) {
         currentUser = data.user;
         await loadData();
+
+        // BACK: open the tab named in the URL (so refresh keeps your place)
+        const fromHash = location.hash.slice(1);
+        activeTab = VALID_TABS.includes(fromHash) ? fromHash : 'dashboard';
+        history.replaceState({ tab: activeTab }, '', '#' + activeTab);
+
         showApp();
         renderAll();
         return;

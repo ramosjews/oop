@@ -297,11 +297,12 @@ a {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
+/* CHANGED: full width, no centering, so it lines up with the top banner */
 .main-content {
   width: 100%;
-  max-width: 1100px;
+  max-width: none;   /* was 1100px */
   padding: 0 0 20px;
-  margin: 0 auto;
+  margin: 0;         /* was: 0 auto */
 }
 
 .app-footer {
@@ -315,25 +316,29 @@ a {
 }
 
 /* ----- hero / welcome banner ----- */
+/* CHANGED: more compact, rounder corners to match the top banner */
 .welcome-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   overflow: hidden;
-  padding: 36px 40px;
+  padding: 28px 36px;     /* was 36px 40px */
   margin-bottom: 24px;
-  border-radius: 10px;
+  border-radius: 14px;    /* was 10px */
   background: linear-gradient(135deg, var(--navy), var(--accent));
   color: #fff;
 }
 
+/* CHANGED: smaller heading */
 .welcome-copy h2 {
   color: #fff;
-  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-size: clamp(1.5rem, 3vw, 2rem);   /* was clamp(1.6rem, 4vw, 2.4rem) */
+  line-height: 1.25;
 }
 
+/* CHANGED: tighter spacing */
 .welcome-copy p {
-  margin: 8px 0 18px;
+  margin: 6px 0 16px;   /* was 8px 0 18px */
   color: #E8D9F7;
 }
 
@@ -399,21 +404,23 @@ a {
 }
 
 /* ----- stats / dashboard cards ----- */
+/* CHANGED: cards share the full width evenly */
 .stats-grid,
 .dashboard-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));  /* was repeat(3, minmax(0, 1fr)) */
   gap: 16px;
-  margin-bottom: 28px;
+  margin-bottom: 24px;   /* was 28px */
 }
 
+/* CHANGED: padding 18px 22px (was 20px 22px) */
 .dashboard-card,
 .profile-card,
 .admin-panel {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 20px 22px;
+  padding: 18px 22px;
   box-shadow: 0 1px 3px rgba(33, 11, 44, .06);
 }
 
@@ -1313,8 +1320,9 @@ input[readonly] {
     flex-basis: 215px;
   }
 
-  .topbar,
-  .main-content {
+  /* CHANGED: .main-content removed from this rule so the content
+     keeps lining up with the top banner */
+  .topbar {
     padding-left: 24px;
     padding-right: 24px;
   }
@@ -1365,8 +1373,9 @@ input[readonly] {
     flex: 1;
   }
 
+  /* CHANGED: was padding: 20px 18px */
   .main-content {
-    padding: 20px 18px;
+    padding: 0 0 20px;
   }
 
   .welcome-banner {

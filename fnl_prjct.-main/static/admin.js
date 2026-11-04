@@ -5,7 +5,14 @@ let allEvents = [];
 let allParticipants = [];
 let allRegistrations = [];
 let editingEventId = null;
-let editingOriginal = null; // CHANGED: original date/time of the event being edited
+let editingOriginal = null; // original date/time of the event being edited
+
+// BACK: navigation state
+const VALID_VIEWS = [
+  "dashboard", "add-event", "events", "finished",
+  "participants", "registrations", "attendance"
+];
+let currentView = null;
 
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -31,7 +38,7 @@ function formatDateTime(value) {
   });
 }
 
-/* CHANGED: past-date helpers */
+/* past-date helpers */
 function todayISO() {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
@@ -165,7 +172,29 @@ function confirmDialog({
   });
 }
 
-function setView(viewName) {
+/* BACK: setView now records history.
+   nav = "push"    -> new history entry (default)
+         "replace" -> overwrite the current entry
+         "none"    -> don't touch history (used by the Back/Forward handler) */
+function setView(viewName, { nav = "push" } = {}) {
+  if (!VALID_VIEWS.includes(viewName)) viewName = "dashboard";
+
+  if (nav !== "none") {
+    const idx = history.state && typeof history.state.idx === "number" ? history.state.idx : 0;
+    if (nav === "push" && currentView !== null && currentView !== viewName) {
+      history.pushState({ view: viewName, idx: idx + 1 }, "", "#" + viewName);
+    } else {
+      history.replaceState({ view: viewName, idx }, "", "#" + viewName);
+    }
+  }
+
+  // BACK: leaving the form (by any route) discards the edit state
+  if (viewName !== "add-event") {
+    editingEventId = null;
+    editingOriginal = null;
+  }
+  currentView = viewName;
+
   $$(".view").forEach(view => {
     view.hidden = view.dataset.view !== viewName;
   });
@@ -194,6 +223,25 @@ function setView(viewName) {
   if (viewName === "registrations") loadRegistrations();
   if (viewName === "attendance") loadAttendance();
 }
+
+// BACK: browser Back / Forward
+window.addEventListener("popstate", (e) => {
+  const wanted = (e.state && e.state.view) || location.hash.slice(1);
+  const view = VALID_VIEWS.includes(wanted) ? wanted : "dashboard";
+
+  // Close any open dialogs so they don't stay on top of the new view
+  const confirmModal = $("#confirm-modal");
+  if (confirmModal) confirmModal.hidden = true;
+  const detailsModal = $("#event-details-modal");
+  if (detailsModal) detailsModal.hidden = true;
+
+  if (view === "add-event") {
+    // Forward onto the form: show a fresh "Create" form
+    openEventForm(null, "none");
+  } else {
+    setView(view, { nav: "none" });
+  }
+});
 
 $$(".nav-item").forEach(button => {
   button.addEventListener("click", () => {
@@ -250,17 +298,24 @@ $("#add-event-form")?.addEventListener("reset", () => setTimeout(syncCategoryInp
 
 function getEventField(name) {
   const form = $("#add-event-form");
-  return form ? form.elements.namedItem(name) : null; // CHANGED: null-safe
+  return form ? form.elements.namedItem(name) : null;
 }
 
-function openEventForm(eventData = null) {
+// BACK: second argument lets the Back/Forward handler skip history changes
+function openEventForm(eventData = null, nav = "push") {
   const form = $("#add-event-form");
   if (!form) return;
 
   form.reset();
   loadCategories(eventData ? eventData.category : "");
+
+  // BACK: switch the view FIRST (this pushes the history entry).
+  // setView clears the edit state when leaving a form, so the edit
+  // variables are set AFTER it.
+  setView("add-event", { nav });
+
   editingEventId = eventData ? eventData.id : null;
-  // CHANGED: remember the original date/time so we only block *changed* past dates
+  // remember the original date/time so we only block *changed* past dates
   editingOriginal = eventData
     ? { date: String(eventData.date || "").slice(0, 10), time: eventData.time }
     : null;
@@ -269,7 +324,6 @@ function openEventForm(eventData = null) {
   const button = $("#save-event-btn");
 
   if (eventData) {
-    setView("add-event");
     if (heading) heading.textContent = "Edit Event";
     if (button) button.textContent = "Update Event";
 
@@ -289,7 +343,6 @@ function openEventForm(eventData = null) {
     });
     showMessage("event-form-message", "");
   } else {
-    setView("add-event");
     if (heading) heading.textContent = "Create New Event";
     if (button) button.textContent = "Save Event";
     const capacityField = getEventField("capacity");
@@ -297,7 +350,7 @@ function openEventForm(eventData = null) {
     showMessage("event-form-message", "");
   }
 
-  applyDateMin(); // CHANGED
+  applyDateMin();
 }
 
 async function loadDashboard() {
@@ -461,7 +514,7 @@ $("#add-event-form")?.addEventListener("submit", async (event) => {
 
   const isEditing = editingEventId !== null;
 
-  // CHANGED: block past date/time before sending. When editing, only block
+  // block past date/time before sending. When editing, only block
   // if the date or time was actually changed (same rule as the server).
   const dateTimeChanged =
     !isEditing ||
@@ -492,13 +545,20 @@ $("#add-event-form")?.addEventListener("submit", async (event) => {
   try {
     await api(url, { method, body: JSON.stringify(payload) });
     editingEventId = null;
-    editingOriginal = null; // CHANGED
+    editingOriginal = null;
     form.reset();
-    applyDateMin(); // CHANGED
+    applyDateMin();
     await loadCategories();
     showToast(isEditing ? `"${payload.title}" updated successfully!` : `"${payload.title}" created successfully!`, "success");
     await loadDashboard();
-    if (isEditing) setView("events");
+
+    // BACK: after an update, step back in history so the form entry is
+    // removed. If there is nothing to go back to (page opened directly on
+    // the form), replace the current entry instead.
+    if (isEditing) {
+      if (history.state && history.state.idx > 0) history.back();
+      else setView("events", { nav: "replace" });
+    }
   } catch (error) {
     showMessage("event-form-message", error.message, "error");
     showToast(error.message, "error");
@@ -892,19 +952,28 @@ $("#logout-btn")?.addEventListener("click", async () => {
   const confirmed = await confirmDialog({
     title: "Log out?",
     message: "You will need to sign in again to access the admin panel.",
-    confirmText: "Yes, Log out"
+    confirmText: "Log out"
   });
   if (!confirmed) return;
 
   try {
     await api("/api/admin/logout", { method: "POST" });
-    showToast("You have been logged out successfully.", "success", 1500);
-    setTimeout(() => { window.location.href = "/"; }, 1500);
+    window.location.replace("/");   // log out right away, no notification
   } catch (error) {
     showToast(error.message || "Unable to log out.", "error");
   }
 });
 
 loadCategories();
-applyDateMin(); // CHANGED
-loadDashboard();
+applyDateMin();
+
+// BACK: open the view named in the URL hash (so refresh keeps your place).
+// The form view is never restored on refresh because its data would be gone.
+(function initNavigation() {
+  const fromHash = location.hash.slice(1);
+  const start =
+    VALID_VIEWS.includes(fromHash) && fromHash !== "add-event"
+      ? fromHash
+      : "dashboard";
+  setView(start, { nav: "replace" }); // setView also loads that view's data
+})();

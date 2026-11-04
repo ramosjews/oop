@@ -48,8 +48,27 @@ NAME_RE = re.compile(r"^[^\W\d_]+(?:[ .'’\-]+[^\W\d_]+)*\.?$")
 # Allowed year levels for the registration form
 YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
-# NEW
 PAST_EVENT_ERROR = "Events must be scheduled for the present or future, not in the past."
+
+
+# =========================================================
+# FIX: NO-CACHE HEADERS
+#
+# Without this, the browser's Back button can show a saved
+# copy of the login page (or of /admin after logout) without
+# ever asking Flask. With these headers, every Back/Forward
+# makes a fresh request, so the redirects below always run.
+# =========================================================
+@app.after_request
+def add_no_cache_headers(response):
+    response.headers["Cache-Control"] = (
+        "no-store, no-cache, must-revalidate, max-age=0"
+    )
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 # =========================================================
 # MYSQL CONNECTION
 #
@@ -82,12 +101,12 @@ def transaction():
         conn.close()
 
 
-# NEW: current time in the app's timezone, as a naive datetime
+# current time in the app's timezone, as a naive datetime
 def _local_now():
     return datetime.now(APP_TZ).replace(tzinfo=None)
 
 
-# NEW: collapse repeated spaces so "Juan  Dela Cruz" == "Juan Dela Cruz"
+# collapse repeated spaces so "Juan  Dela Cruz" == "Juan Dela Cruz"
 def _normalize_name(name):
     return " ".join(name.split())
 # =========================================================
@@ -168,7 +187,7 @@ class UpcomingEvent(Event):
                 f"{self.get('date')} {self.get('time')}",
                 "%Y-%m-%d %H:%M",
             )
-            return event_time < _local_now()  # NEW
+            return event_time < _local_now()
         except (ValueError, TypeError):
             return False
 # ---------------- Registrations ----------------
@@ -224,7 +243,7 @@ def _parse_time(text):
     raise ValueError("Invalid time.")
 
 
-# NEW: seconds are ignored so an event set for the current minute is allowed
+# seconds are ignored so an event set for the current minute is allowed
 def _is_in_past(event_date, event_time):
     now = _local_now().replace(second=0, microsecond=0)
     return datetime.combine(event_date, event_time) < now
@@ -339,6 +358,11 @@ def _safe_user(user_dict):
 # =========================================================
 @app.route("/")
 def index():
+    # FIX: a logged-in admin never sees the sign-in page. Pressing
+    # Back from /admin lands here and is sent straight forward again.
+    # The only way out is the Logout button.
+    if _current_role() == "admin":
+        return redirect("/admin")
     return render_template("index.html")
 @app.route("/admin")
 def admin_page():
@@ -347,7 +371,7 @@ def admin_page():
         return redirect("/")
     return render_template("admin.html")
 # =========================================================
-# NEW: ADMIN: PRINTABLE ATTENDANCE SHEET
+# ADMIN: PRINTABLE ATTENDANCE SHEET
 # =========================================================
 @app.route("/api/admin/events/<event_id>/attendance-sheet", methods=["GET"])
 def generate_attendance_sheet(event_id):
@@ -400,7 +424,7 @@ def generate_attendance_sheet(event_id):
 def register_account():
     body = _get_json()
     student_id = str(body.get("student_id", "")).strip()
-    name = _normalize_name(str(body.get("name", "")))  # NEW
+    name = _normalize_name(str(body.get("name", "")))
     email = str(body.get("email", "")).strip().lower()
     password = body.get("password", "")
     if not all([student_id, name, email, password]):
@@ -454,7 +478,7 @@ def register_account():
                 return jsonify({
                     "error": "This Student ID is already registered."
                 }), 409
-            # NEW: one account per name, regardless of email
+            # one account per name, regardless of email
             cursor.execute(
                 "SELECT 1 FROM users WHERE LOWER(name) = LOWER(%s)",
                 (name,),
@@ -478,7 +502,7 @@ def register_account():
     except mysql.connector.IntegrityError:
         # Two people used the same email / student ID / name at once.
         return jsonify({
-            "error": "This email, Student ID, or name is already registered."  # NEW
+            "error": "This email, Student ID, or name is already registered."
         }), 409
     session.clear()
     return jsonify({
@@ -630,7 +654,7 @@ def create_event():
             "error": "Enter a valid date and time."
         }), 400
 
-    # NEW: block events scheduled in the past
+    # block events scheduled in the past
     if _is_in_past(event_date, event_time):
         return jsonify({"error": PAST_EVENT_ERROR}), 400
 
@@ -698,7 +722,7 @@ def update_event(event_id):
         if not event:
             return jsonify({"error": "Event not found."}), 404
 
-        # NEW: only block past dates if the date or time was actually
+        # only block past dates if the date or time was actually
         # changed, so other details of an older event can still be edited.
         date_changed = (
             event_date.isoformat() != event["date"]
@@ -810,7 +834,7 @@ def get_participant_accounts():
         users = [_safe_user(user_to_dict(row)) for row in cursor.fetchall()]
     return jsonify(users)
 # =========================================================
-# NEW: ADMIN: DELETE A PARTICIPANT ACCOUNT
+# ADMIN: DELETE A PARTICIPANT ACCOUNT
 # =========================================================
 @app.route("/api/admin/users/<user_id>", methods=["DELETE"])
 def delete_user(user_id):
@@ -849,7 +873,7 @@ def reserve_spot(event_id):
         return permission_error
     body = _get_json()
     user_id = session["user_id"]
-    # NEW: name is no longer taken from the form; the account's name is used
+    # name is no longer taken from the form; the account's name is used
     course = str(body.get("course", "")).strip()
     section = str(body.get("section", "")).strip()
     year = str(body.get("year", "")).strip()
@@ -918,7 +942,7 @@ def reserve_spot(event_id):
                 """,
                 (
                     registration_id, event_id, user_id,
-                    user["student_id"], user["name"], user["email"],  # NEW: account name
+                    user["student_id"], user["name"], user["email"],
                     course, section, year, attending, _utc_now(),
                 ),
             )
