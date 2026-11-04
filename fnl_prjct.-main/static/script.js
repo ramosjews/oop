@@ -264,7 +264,7 @@
     // Texts
     $('#auth-title').innerHTML = isSignup
       ? 'Sign Up<span></span>'
-      : 'Sign In<span></span>';
+      : 'Log In<span></span>';
 
     $('#auth-subtitle').textContent = isSignup
       ? 'Create an account to register for events.'

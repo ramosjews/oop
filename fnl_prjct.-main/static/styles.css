@@ -1809,8 +1809,8 @@ input[readonly] {
 /* Soft glow background instead of flat beige */
 #auth-view {
   background:
-    radial-gradient(1600px 1000px at 8% 8%, rgba(188, 150, 230, 0.35), transparent 75%),
-    radial-gradient(1600px 1000px at 95% 95%, rgba(255, 209, 102, 0.30), transparent 75%),
+    radial-gradient(1600px 1000px at 8% 8%, rgba(188, 150, 230, 0.35), transparent 85%),
+    radial-gradient(1600px 1000px at 95% 95%, rgba(255, 209, 102, 0.30), transparent 85%),
     var(--page, #F6F1E8);
 }
 
