@@ -11,8 +11,13 @@
 <div class="layout">
   <aside class="sidebar">
     <div class="brand">
-      <h2>COLLEGE OF COMPUTER STUDIES</h2>
-      <p>Event Management System</p>
+      <div class="brand-row">
+        <img src="{{ url_for('static', filename='ccs-logo.png') }}" alt="CCS Logo" class="brand-logo">
+        <div class="brand-text">
+          <strong>COLLEGE OF</strong>
+          <span>COMPUTER STUDIES</span>
+        </div>
+      </div>
     </div>
 
     <div class="nav-label">ADMIN MENU</div>
@@ -24,6 +29,7 @@
       <button class="nav-item" data-tab="registrations">☷ Registrations</button>
       <button class="nav-item" data-tab="finished">✔ Finished Events</button>
       <button class="nav-item" data-tab="attendance">✓ Attendance</button>
+      <button class="nav-item" data-tab="settings">⚙ Settings</button>
     </nav>
 
     <div class="sidebar-bottom" style="position: relative;">
@@ -34,20 +40,18 @@
       <button type="button" class="account-btn" id="account-btn"
               aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu">
         <span class="account-avatar">A</span>
-        <span class="account-name">Admin</span>
-        <span class="account-caret">⌃</span>
+        <span class="account-info">
+          <span class="account-name">Admin</span>
+          <span class="account-role">Administrator</span>
+        </span>
+        <svg class="account-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
       </button>
     </div>
   </aside>
 
   <main class="main">
-    <header class="topbar">
-      <div>
-        <h1 id="page-title">Dashboard</h1>
-        <p>Welcome to your event management dashboard.</p>
-      </div>
-      <span class="admin-label">ADMIN PANEL</span>
-    </header>
+    <!-- Top bar removed. Hidden so admin.js can still update #page-title safely. -->
+    <h1 id="page-title" hidden>Dashboard</h1>
 
     <!-- DASHBOARD -->
     <section class="view" data-view="dashboard">
@@ -71,29 +75,78 @@
 
     <!-- ADD EVENT -->
     <section class="view" data-view="add-event" hidden>
-      <div class="panel">
-        <div class="panel-heading"><h2 id="event-form-title">Create New Event</h2></div>
+      <div class="panel event-form-panel">
+
+        <div class="form-head">
+          <span class="form-head-icon">▣</span>
+          <div>
+            <h2 id="event-form-title">Create New Event</h2>
+            <p>Fill in the details below to publish a new event.</p>
+          </div>
+        </div>
+
         <form id="add-event-form">
-          <div class="form-grid">
-            <div class="field full"><label for="event-title">Event Title *</label><input id="event-title" name="title" maxlength="150" required></div>
-            <div class="field">
-              <label for="event-category">Category *</label>
-              <select id="event-category" name="category" required>
-                <option value="">-- Select Existing Category --</option>
-                <option value="__new__">+ Add New Category...</option>
-              </select>
-              <input id="event-category-new" type="text" maxlength="50" placeholder="Type the new category name" style="margin-top:10px" hidden>
+
+          <!-- Basic info -->
+          <div class="form-section">
+            <div class="form-section-label">Basic Info</div>
+            <div class="form-grid">
+              <div class="field full">
+                <label for="event-title">Event Title *</label>
+                <input id="event-title" name="title" maxlength="150" required>
+              </div>
+
+              <div class="field">
+                <label for="event-category">Category *</label>
+                <select id="event-category" name="category" required>
+                  <option value="">-- Select Existing Category --</option>
+                  <option value="__new__">+ Add New Category...</option>
+                </select>
+                <input id="event-category-new" type="text" maxlength="50" placeholder="Type the new category name" style="margin-top:10px" hidden>
+              </div>
+
+              <div class="field">
+                <label for="event-capacity">Capacity *</label>
+                <input id="event-capacity" name="capacity" type="number" min="1" step="1" value="100" required>
+              </div>
             </div>
-            <div class="field"><label for="event-date">Date *</label><input id="event-date" name="date" type="date" required></div>
-            <div class="field"><label for="event-time">Time *</label><input id="event-time" name="time" type="time" required></div>
-            <div class="field"><label for="event-location">Location *</label><input id="event-location" name="location" maxlength="200" required></div>
-            <div class="field"><label for="event-capacity">Capacity *</label><input id="event-capacity" name="capacity" type="number" min="1" step="1" value="100" required></div>
-            <div class="field full"><label for="event-description">Description</label><textarea id="event-description" name="description" placeholder="Enter event details..."></textarea></div>
           </div>
+
+          <!-- Schedule & venue -->
+          <div class="form-section">
+            <div class="form-section-label">Schedule &amp; Venue</div>
+            <div class="form-grid">
+              <div class="field">
+                <label for="event-date">Date *</label>
+                <input id="event-date" name="date" type="date" required>
+              </div>
+
+              <div class="field">
+                <label for="event-time">Time *</label>
+                <input id="event-time" name="time" type="time" required>
+              </div>
+
+              <div class="field full">
+                <label for="event-location">Location *</label>
+                <input id="event-location" name="location" maxlength="200" required>
+              </div>
+            </div>
+          </div>
+
+          <!-- Details -->
+          <div class="form-section">
+            <div class="form-section-label">Details</div>
+            <div class="field full">
+              <label for="event-description">Description</label>
+              <textarea id="event-description" name="description" placeholder="Enter event details..."></textarea>
+            </div>
+          </div>
+
           <div class="form-actions">
-            <button type="submit" class="btn btn-gold" id="save-event-btn">Save Event</button>
             <button type="reset" class="btn btn-outline">Clear Form</button>
+            <button type="submit" class="btn btn-gold" id="save-event-btn">Save Event</button>
           </div>
+
           <p class="message" id="event-form-message" role="status"></p>
         </form>
       </div>
@@ -212,6 +265,58 @@
         </div>
       </div>
     </section>
+
+    <!-- SETTINGS: DATABASE BACKUP -->
+    <section class="view" data-view="settings" hidden>
+      <div class="panel">
+        <div class="panel-heading"><h2>Settings</h2></div>
+
+        <div class="settings-block-head">
+          <span class="settings-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+          </span>
+          <div>
+            <h3>Database Backup</h3>
+            <p>Export a copy of your data, or restore it from a backup file.</p>
+          </div>
+        </div>
+
+        <div class="backup-grid">
+          <!-- EXPORT -->
+          <div class="backup-card">
+            <span class="backup-card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            </span>
+            <h4>Export Data</h4>
+            <p>Download the whole database (all tables and records) as a <strong>.sql</strong> file.</p>
+            <button type="button" class="btn btn-gold" id="backup-export-btn">Export Database</button>
+          </div>
+
+          <!-- IMPORT -->
+          <div class="backup-card">
+            <span class="backup-card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
+            </span>
+            <h4>Import Data</h4>
+            <p>Restore the database from a <strong>.sql</strong> backup file. Current data will be replaced.</p>
+
+            <label class="backup-drop" id="backup-drop" for="backup-file">
+              <span id="backup-file-label">Click to choose or drop a .sql file here</span>
+            </label>
+            <input type="file" id="backup-file" accept=".sql" hidden>
+
+            <button type="button" class="btn btn-danger" id="backup-import-btn" disabled>Import Database</button>
+          </div>
+        </div>
+
+        <p class="message" id="backup-message" role="status"></p>
+
+        <div class="backup-note">
+          <strong>Good to know:</strong> every import first saves a safety copy of the current
+          database in the server's <code>backups</code> folder, so you can undo a mistake.
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -265,6 +370,8 @@
   });
 </script>
 
+<script src="{{ url_for('static', filename='dsa.js') }}"></script>
 <script src="{{ url_for('static', filename='admin.js') }}"></script>
+<script src="{{ url_for('static', filename='backup.js') }}"></script>
 </body>
 </html>

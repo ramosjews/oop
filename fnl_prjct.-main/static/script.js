@@ -12,13 +12,18 @@
   let searchTerm = '';
   let activeTab = 'dashboard';
 
+  // notifications
+  let notifications = [];
+  let unreadCount = 0;
+  let notifTimer = null;
+
   // BACK: tabs that can be stored in browser history
   const VALID_TABS = ['dashboard', 'events', 'mine', 'profile', 'attended'];
 
   // ----- input rules -----
-  // Student ID: numbers only (hyphens allowed, e.g. 2023-00123).
+  // Student ID: exactly 8 digits in the format 0000-1000.
   // Name: letters only (spaces, periods, apostrophes and hyphens allowed).
-  const STUDENT_ID_RE = /^\d+(?:-\d+)*$/;
+  const STUDENT_ID_RE = /^\d{4}-\d{4}$/;
   const NAME_RE = /^\p{L}+(?:[ .'’\-]+\p{L}+)*\.?$/u;
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -26,17 +31,47 @@
   const PASSWORD_MIN_LENGTH = 8;
 
   const STUDENT_ID_MESSAGE =
-    'Student ID can only contain numbers (and hyphens).';
+    'Student ID should look like 0000-1000.';
   const NAME_MESSAGE =
-    'Name can only contain letters, spaces, periods, apostrophes and hyphens.';
+    'Names can only use letters, spaces, periods, apostrophes and hyphens.';
   const PASSWORD_MESSAGE =
-    `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
-  const REQUIRED_MESSAGE = '* This field is required.';
+    `Password needs at least ${PASSWORD_MIN_LENGTH} characters.`;
+  const EMAIL_MESSAGE =
+    "That doesn't look like a valid email. Try name@example.com.";
 
-  // ----- per-field "required" messages (like Google Forms) -----
+  // One "empty field" message per input, so they don't all read the same.
+  // The key is the input's id.
+  const REQUIRED_MESSAGES = {
+    'auth-student-id': 'Please enter your student ID.',
+    'auth-name': 'Please enter your full name.',
+    'auth-email': 'Please enter your email address.',
+    'auth-password': 'Please enter your password.',
+    'profile-course': 'Please select your course.',
+    'profile-year': 'Please select your year level.',
+    'profile-section': 'Please enter your section (e.g. A).',
+    default: 'Please fill out this field.'
+  };
+
+  const COURSES = ['BSCS', 'BSIT'];
+  const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+
+  // A user has class info once course, year level and section are all saved.
+  function hasClassInfo(user) {
+    return Boolean(user && user.course && user.year && user.section);
+  }
+
+  // "BSCS 1A" style label, e.g. BSCS + 1st Year + A
+  function classLabel(user) {
+    if (!hasClassInfo(user)) return '';
+    const yearNumber = (String(user.year).match(/^\d/) || [''])[0];
+    return `${user.course} ${yearNumber}${user.section}`;
+  }
+
+  // ----- per-field messages (like Google Forms) -----
   // The message is created the first time it is needed and is only visible
   // while its .field has the "has-error" class.
-  function showFieldError(input, message = REQUIRED_MESSAGE, anchor = null) {
+  // If no message is passed, the one written for that specific field is used.
+  function showFieldError(input, message = null, anchor = null) {
     const field = input.closest('.field');
     if (!field) return;
 
@@ -51,7 +86,16 @@
       target.parentNode.insertBefore(error, target);
     }
 
-    error.textContent = message;
+    let text = message ||
+      REQUIRED_MESSAGES[input.id] ||
+      REQUIRED_MESSAGES.default;
+
+    // On sign up the person is creating a password, not entering one.
+    if (!message && input.id === 'auth-password' && authMode === 'signup') {
+      text = `Please create a password with at least ${PASSWORD_MIN_LENGTH} characters.`;
+    }
+
+    error.textContent = text;
     field.classList.add('has-error');
   }
 
@@ -75,11 +119,19 @@
     if (!field || !field.id) return;
 
     if (field.id === 'auth-student-id') {
-      field.value = field.value.replace(/[^0-9-]/g, '');
+      // digits only, max 8, auto-insert "-" after the 4th digit
+      const digits = field.value.replace(/\D/g, '').slice(0, 8);
+      field.value = digits.length > 4
+        ? `${digits.slice(0, 4)}-${digits.slice(4)}`
+        : digits;
     }
 
     if (field.id === 'auth-name' || field.id === 'registration-name') {
       field.value = field.value.replace(/[0-9_]|[^\p{L} .'’\-]/gu, '');
+    }
+
+    if (field.id === 'profile-section') {
+      field.value = field.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
     }
 
     clearFieldError(field);
@@ -209,6 +261,8 @@
     $('#auth-view').hidden = false;
     $('#participant-app').hidden = true;
     $('#modal-root').innerHTML = '';
+    stopNotificationPolling();
+    setNotifPanel(false);
   }
 
   function showApp() {
@@ -216,13 +270,15 @@
     $('#participant-app').hidden = false;
     $('#header-user').textContent = currentUser?.name || '';
 
-    // Para magbago rin ang pangalan at avatar initial sa sidebar ng user
+    // Update the name and avatar initial in the user's sidebar
     const userName = currentUser?.name || 'User';
     const sidebarNameElem = document.getElementById('sidebar-user-name');
     const sidebarAvatarElem = document.getElementById('account-avatar-initial');
 
     if (sidebarNameElem) sidebarNameElem.textContent = userName;
     if (sidebarAvatarElem) sidebarAvatarElem.textContent = userName.charAt(0).toUpperCase();
+
+    startNotificationPolling();
   }
 
   // ----- sign in / sign up screen -----
@@ -245,7 +301,7 @@
     $('#auth-student-id').required = isSignup;
     $('#auth-name').required = isSignup;
 
-    // Remember me / forgot password only make sense when logging in
+    // Forgot password only makes sense when logging in
     $('#login-options').hidden = isSignup;
 
     // Password rules: minimum length + hint (hint only on sign up)
@@ -306,6 +362,8 @@
 
   // Show the number keypad on phones for the Student ID box.
   $('#auth-student-id').setAttribute('inputmode', 'numeric');
+  // 8 digits + 1 dash = 9 characters
+  $('#auth-student-id').setAttribute('maxlength', '9');
 
   $('#auth-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -327,7 +385,7 @@
     error.hidden = true;
     clearAllFieldErrors($('#auth-form'));
 
-    // ----- missing fields: show the red "required" message on each one -----
+    // ----- missing fields: show a specific message on each empty one -----
     const required = submittedMode === 'signup'
       ? [
         [studentIdInput, studentId],
@@ -348,13 +406,28 @@
       return;
     }
 
+    // Student ID must be exactly 0000-1000 (sign up only)
+    if (submittedMode === 'signup' && !STUDENT_ID_RE.test(studentId)) {
+      showFieldError(studentIdInput, STUDENT_ID_MESSAGE);
+      studentIdInput.focus();
+      return;
+    }
+
+    if (submittedMode === 'signup' && !NAME_RE.test(name)) {
+      showFieldError(nameInput, NAME_MESSAGE);
+      nameInput.focus();
+      return;
+    }
+
     if (!EMAIL_RE.test(email)) {
-      showFieldError(emailInput, 'Enter a valid email address.');
+      showFieldError(emailInput, EMAIL_MESSAGE);
       emailInput.focus();
       return;
     }
 
-    if (password.length < PASSWORD_MIN_LENGTH) {
+    // Only enforce the minimum length on sign up. On login, a wrong
+    // password should just fail with the server's generic message.
+    if (submittedMode === 'signup' && password.length < PASSWORD_MIN_LENGTH) {
       showFieldError(passwordInput, PASSWORD_MESSAGE);
       passwordInput.focus();
       return;
@@ -366,15 +439,6 @@
     try {
       // ===== SIGN UP: create the account, then go to the sign-in form =====
       if (submittedMode === 'signup') {
-        // Student ID must be numbers only; name must have no numbers.
-        if (!STUDENT_ID_RE.test(studentId)) {
-          throw new Error(STUDENT_ID_MESSAGE);
-        }
-
-        if (!NAME_RE.test(name)) {
-          throw new Error(NAME_MESSAGE);
-        }
-
         await api('/api/auth/register', {
           method: 'POST',
           body: JSON.stringify({
@@ -445,7 +509,7 @@
     }
   });
 
-  // Helper function para sa custom Logout Confirmation Dialog
+  // Helper for the custom Logout Confirmation Dialog
   function confirmUserLogout() {
     return new Promise((resolve) => {
       const modal = $('#user-confirm-modal');
@@ -453,7 +517,7 @@
       const cancelBtn = $('#user-logout-cancel-btn');
 
       if (!modal || !okBtn || !cancelBtn) {
-        // Fallback pabalik sa native confirm kapag wala ang modal element
+        // Fall back to the native confirm if the modal element is missing
         resolve(confirm('Are you sure you want to log out?'));
         return;
       }
@@ -487,6 +551,7 @@
   // replace() keeps the logged-in page out of the history.
   async function logout() {
     try {
+      stopNotificationPolling();
       await api('/api/auth/logout', { method: 'POST', body: '{}' });
       window.location.replace('/');
     } catch (error) {
@@ -494,7 +559,7 @@
     }
   }
 
-  // Sidebar Logout Button na may confirmation modal
+  // Sidebar Logout Button with confirmation modal
   $('#sidebar-logout-btn').addEventListener('click', async () => {
     const confirmed = await confirmUserLogout();
     if (!confirmed) return;
@@ -502,15 +567,18 @@
   });
 
   async function loadData() {
-    const [eventData, categoryData, registrationData] = await Promise.all([
+    const [eventData, categoryData, registrationData, notificationData] = await Promise.all([
       api('/api/events'),
       api('/api/categories'),
-      api('/api/my-registrations')
+      api('/api/my-registrations'),
+      api('/api/notifications').catch(() => ({ items: [], unread: 0 }))
     ]);
 
     events = Array.isArray(eventData) ? eventData : [];
     categories = Array.isArray(categoryData) ? categoryData : [];
     registrations = Array.isArray(registrationData) ? registrationData : [];
+    notifications = Array.isArray(notificationData.items) ? notificationData.items : [];
+    unreadCount = Number(notificationData.unread || 0);
   }
 
   // Browse Events shows upcoming events only.
@@ -618,7 +686,7 @@
     container.querySelectorAll('[data-event-id]').forEach(card => {
       card.addEventListener('click', () => {
         const selectedEvent = events.find(
-          item => item.id === card.dataset.eventId
+          item => String(item.id) === String(card.dataset.eventId)
         );
 
         if (!selectedEvent) return;
@@ -647,10 +715,6 @@
     attachEventCardHandlers($('#grid'));
   }
 
-  function renderDashboard() {
-    // Featured Events: upcoming only.
-  }
-
   function renderMine() {
     const sorted = [...registrations].sort((a, b) =>
       new Date(b.registeredAt || 0) - new Date(a.registeredAt || 0)
@@ -658,7 +722,9 @@
 
     $('#mine-list').innerHTML = sorted.length
       ? sorted.map(registration => {
-        const event = events.find(item => item.id === registration.eventId);
+        const event = events.find(
+          item => String(item.id) === String(registration.eventId)
+        );
         const date = event
           ? `${fmtDate(event.date)} · ${event.time || ''}`
           : 'Event details unavailable';
@@ -728,6 +794,15 @@
     const name = currentUser?.name || 'Participant';
     const studentId = currentUser?.student_id || currentUser?.studentId || '';
     const email = currentUser?.email || '';
+    const label = classLabel(currentUser);
+
+    const courseOptions = COURSES.map(course => `
+      <option value="${course}" ${currentUser?.course === course ? 'selected' : ''}>${course}</option>
+    `).join('');
+
+    const yearOptions = YEAR_LEVELS.map(year => `
+      <option value="${year}" ${currentUser?.year === year ? 'selected' : ''}>${year}</option>
+    `).join('');
 
     $('#profile-content').innerHTML = `
       <div class="profile-card">
@@ -737,13 +812,105 @@
           <h3>${escapeHtml(name)}</h3>
           <p><strong>Student ID:</strong> ${escapeHtml(studentId || 'Not available')}</p>
           <p><strong>Email:</strong> ${escapeHtml(email)}</p>
+          <p><strong>Class:</strong> ${label ? escapeHtml(label) : 'Not set yet'}</p>
           <div class="profile-meta">Registrations: ${registrations.length}</div>
           <p class="profile-note">
             Your account information is used for your event registrations.
           </p>
         </div>
       </div>
+
+      <div class="admin-panel" style="margin-top: 20px;">
+        <span class="dashboard-card-label">CLASS INFORMATION</span>
+        <h3>Course, Year &amp; Section</h3>
+        <p class="profile-note" style="margin: 0 0 16px; color: var(--muted);">
+          Save this once. It is used automatically whenever you register for an event.
+        </p>
+
+        <form id="profile-form" novalidate>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;">
+            <div class="field">
+              <label for="profile-course">Course</label>
+              <select id="profile-course">
+                <option value="">Select your course</option>
+                ${courseOptions}
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="profile-year">Year Level</label>
+              <select id="profile-year">
+                <option value="">Select year level</option>
+                ${yearOptions}
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="profile-section">Section</label>
+              <input id="profile-section" type="text" maxlength="5"
+                placeholder="e.g. A" autocomplete="off"
+                value="${escapeHtml(currentUser?.section || '')}">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-gold" id="profile-save">
+            Save Profile
+          </button>
+        </form>
+      </div>
     `;
+
+    const form = $('#profile-form');
+
+    form.addEventListener('submit', async (submitEvent) => {
+      submitEvent.preventDefault();
+
+      const courseInput = $('#profile-course');
+      const yearInput = $('#profile-year');
+      const sectionInput = $('#profile-section');
+      const button = $('#profile-save');
+
+      const course = courseInput.value;
+      const year = yearInput.value;
+      const section = sectionInput.value.trim().toUpperCase();
+
+      clearAllFieldErrors(form);
+
+      const missing = [];
+      if (!course) missing.push(courseInput);
+      if (!year) missing.push(yearInput);
+      if (!section) missing.push(sectionInput);
+
+      if (missing.length) {
+        missing.forEach(input => showFieldError(input));
+        missing[0].focus();
+        return;
+      }
+
+      if (!/^[A-Za-z0-9]{1,5}$/.test(section)) {
+        showFieldError(sectionInput, 'Section can only contain letters or numbers.');
+        sectionInput.focus();
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = 'Saving...';
+
+      try {
+        const data = await api('/api/profile', {
+          method: 'PUT',
+          body: JSON.stringify({ course, year, section })
+        });
+
+        currentUser = data.user;
+        renderProfile();
+        showToast(`Profile saved! You are now ${classLabel(currentUser)}.`);
+      } catch (err) {
+        showToast(err.message, 'error');
+        button.disabled = false;
+        button.textContent = 'Save Profile';
+      }
+    });
   }
 
   function renderAttended() {
@@ -754,7 +921,9 @@
 
     $('#attended-list').innerHTML = attended.length
       ? attended.map(registration => {
-        const event = events.find(item => item.id === registration.eventId);
+        const event = events.find(
+          item => String(item.id) === String(registration.eventId)
+        );
 
         return `
             <div class="my-ticket-row">
@@ -773,6 +942,166 @@
           `;
       }).join('')
       : '<div class="empty-state">Your attended events will appear here after the admin records your attendance.</div>';
+  }
+
+  // ----- notifications (bell at the top right) -----
+  const NOTIF_ICONS = {
+    event_created: '📅',
+    event_updated: '✏️',
+    event_cancelled: '⚠️',
+    reminder: '⏰',
+    registration: '✅',
+    registration_cancelled: '↩️',
+    waitlist_promoted: '🎉'
+  };
+
+  function fmtWhen(value) {
+    const date = new Date(value);
+    if (!value || Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  }
+
+  function renderNotificationBadge() {
+    const badge = $('#notif-badge');
+    const bell = $('#notif-bell');
+    if (!badge || !bell) return;
+
+    badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+    badge.hidden = unreadCount <= 0;
+    bell.classList.toggle('has-unread', unreadCount > 0);
+    bell.setAttribute(
+      'aria-label',
+      unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'
+    );
+  }
+
+  function renderNotifications() {
+    renderNotificationBadge();
+
+    const readAll = $('#notif-read-all');
+    if (readAll) readAll.hidden = unreadCount <= 0;
+
+    $('#notifications-list').innerHTML = notifications.length
+      ? notifications.map(n => `
+          <div class="notif-item ${n.isRead ? '' : 'unread'}"
+            data-notif-id="${escapeHtml(n.id)}">
+            <div class="notif-icon">${NOTIF_ICONS[n.type] || '🔔'}</div>
+            <div class="notif-body">
+              <div class="notif-msg">${escapeHtml(n.message)}</div>
+              <div class="notif-time">${escapeHtml(fmtWhen(n.createdAt))}</div>
+            </div>
+            ${n.isRead ? '' : '<span class="notif-dot" aria-label="Unread"></span>'}
+          </div>
+        `).join('')
+      : '<div class="notif-empty">No notifications yet.<br>New events, updates and reminders will show up here.</div>';
+  }
+
+  // ----- bell: open / close the dropdown -----
+  function setNotifPanel(open) {
+    const panel = $('#notif-panel');
+    const bell = $('#notif-bell');
+    if (!panel || !bell) return;
+    panel.hidden = !open;
+    bell.setAttribute('aria-expanded', String(open));
+  }
+
+  $('#notif-bell').addEventListener('click', (event) => {
+    event.stopPropagation();
+    setNotifPanel($('#notif-panel').hidden);
+  });
+
+  // click outside closes it (ignore clicks on items that were just re-rendered)
+  document.addEventListener('click', (event) => {
+    if (!event.target.isConnected) return;
+    const wrap = $('#notif-wrap');
+    if (wrap && !wrap.contains(event.target)) setNotifPanel(false);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setNotifPanel(false);
+  });
+
+  // shake the bell when a new notification arrives
+  function ringBell() {
+    const bell = $('#notif-bell');
+    if (!bell) return;
+    bell.classList.remove('ring');
+    void bell.offsetWidth; // restart the animation
+    bell.classList.add('ring');
+  }
+
+  // Click one notification to mark it as read.
+  $('#notifications-list').addEventListener('click', async (event) => {
+    const item = event.target.closest('[data-notif-id]');
+    if (!item) return;
+
+    const note = notifications.find(n => String(n.id) === item.dataset.notifId);
+    if (!note || note.isRead) return;
+
+    try {
+      await api(`/api/notifications/${encodeURIComponent(note.id)}/read`, {
+        method: 'POST',
+        body: '{}'
+      });
+      note.isRead = true;
+      unreadCount = Math.max(0, unreadCount - 1);
+      renderNotifications();
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  });
+
+  $('#notif-read-all').addEventListener('click', async () => {
+    try {
+      await api('/api/notifications/read-all', { method: 'POST', body: '{}' });
+      notifications.forEach(n => { n.isRead = true; });
+      unreadCount = 0;
+      renderNotifications();
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  });
+
+  // Check for new notifications every 30 seconds while logged in.
+  async function refreshNotifications() {
+    try {
+      const before = unreadCount;
+      const data = await api('/api/notifications');
+      notifications = Array.isArray(data.items) ? data.items : [];
+      unreadCount = Number(data.unread || 0);
+      renderNotifications();
+
+      if (unreadCount > before) {
+        ringBell();
+        showToast('You have a new notification.');
+        // a new event or an update: refresh the lists too
+        await loadData();
+        renderStats();
+        renderEvents();
+        renderMine();
+        renderAttended();
+      }
+    } catch (error) {
+      // ignore; the next check will try again
+    }
+  }
+
+  function stopNotificationPolling() {
+    if (notifTimer) {
+      clearInterval(notifTimer);
+      notifTimer = null;
+    }
+  }
+
+  function startNotificationPolling() {
+    stopNotificationPolling();
+    notifTimer = setInterval(refreshNotifications, 30000);
   }
 
   function updateActiveTab() {
@@ -800,9 +1129,6 @@
       attended: 'Attended Events'
     };
 
-    $('#page-heading').innerHTML =
-      `${escapeHtml(titles[activeTab] || 'Dashboard')}<span>.</span>`;
-
     $('#search-wrap').hidden = activeTab !== 'events';
     $('#welcome-banner').hidden = activeTab !== 'dashboard';
   }
@@ -825,10 +1151,11 @@
 
   // BACK: browser Back / Forward
   window.addEventListener('popstate', (event) => {
-    // Close the registration popup and the logout dialog if they are open
+    // Close the registration popup, the logout dialog and the bell if open
     $('#modal-root').innerHTML = '';
     const logoutModal = $('#user-confirm-modal');
     if (logoutModal) logoutModal.hidden = true;
+    setNotifPanel(false);
 
     // Only switch tabs while someone is logged in
     if (!currentUser) return;
@@ -845,13 +1172,12 @@
     renderMine();
     renderProfile();
     renderAttended();
+    renderNotifications();
     updateActiveTab();
   }
 
-  // Logout mula sa Topbar user name button
-  // BACK: uses the same confirm dialog + logout() as the sidebar button.
-  // (Before, this file added a second OK-button listener to the same dialog,
-  // so one click ran two logouts and showed the success toast.)
+  // Logout from the topbar user name button (if it exists).
+  // Uses the same confirm dialog + logout() as the sidebar button.
   const headerLogoutBtn = document.getElementById('header-logout-btn');
 
   if (headerLogoutBtn) {
@@ -879,7 +1205,7 @@
     }
 
     const alreadyRegistered = registrations.some(
-      item => item.eventId === event.id
+      item => String(item.eventId) === String(event.id)
     );
 
     if (alreadyRegistered) {
@@ -887,9 +1213,21 @@
       return;
     }
 
+    // The class information must be saved in My Profile first.
+    if (!hasClassInfo(currentUser)) {
+      showToast(
+        'Please set your course, year level and section in My Profile first.',
+        'error'
+      );
+      setTab('profile');
+      return;
+    }
+
+    // Display the registration modal.
     $('#modal-root').innerHTML = `
       <div class="overlay" id="registration-overlay">
         <div class="modal">
+
           <div class="modal-head">
             <div>
               <h3>${escapeHtml(event.title)}</h3>
@@ -899,166 +1237,202 @@
                 ${escapeHtml(event.location || 'Location TBA')}
               </div>
             </div>
-            <button type="button" class="close-x" id="registration-close">✕</button>
+
+            <button
+              type="button"
+              class="close-x"
+              id="registration-close"
+              aria-label="Close"
+            >✕</button>
           </div>
 
           <div class="modal-body">
-            <p>Fill in your details to register for this event.</p>
 
-            <div class="field">
-              <label for="registration-name">Full Name</label>
-              <input id="registration-name" type="text" maxlength="100"
-                value="${escapeHtml(currentUser?.name || '')}"
-                placeholder="Enter your full name">
+            <p>
+              You will be registered using your saved profile details.
+            </p>
+
+            <!-- Saved student information -->
+            <div style="
+              margin-bottom:16px;
+              padding:14px 16px;
+              background:var(--page);
+              border:1px solid var(--line);
+              border-radius:10px;
+            ">
+              <div class="mt-title">
+                ${escapeHtml(currentUser.name || '')}
+              </div>
+
+              <div class="mt-sub">
+                ${escapeHtml(classLabel(currentUser))}
+                · ${escapeHtml(currentUser.course || '')}
+                · ${escapeHtml(currentUser.year || '')}
+                · Section ${escapeHtml(currentUser.section || '')}
+              </div>
+
+              <div class="mt-sub">
+                To change this information, update it in My Profile.
+              </div>
             </div>
 
-            <div class="field">
-              <label for="registration-course">Course</label>
-              <select id="registration-course">
-                <option value="">Select your course</option>
-                <option value="BSCS">BSCS</option>
-                <option value="BSIT">BSIT</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="registration-section">Section</label>
-              <input id="registration-section" type="text" maxlength="1"
-                placeholder="e.g. A">
-            </div>
-
-            <div class="field">
-              <label for="registration-year">Year Level</label>
-              <select id="registration-year">
-                <option value="">Select year level</option>
-                <option value="1st Year">1st Year</option>
-                <option value="2nd Year">2nd Year</option>
-                <option value="3rd Year">3rd Year</option>
-                <option value="4th Year">4th Year</option>
-              </select>
-            </div>
-
+            <!-- Attendance confirmation -->
             <div class="field">
               <label>Will you attend this event?</label>
-              <div id="registration-attending-group" style="display:flex; gap:24px; margin-top:6px;">
-                <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
-                  <input type="radio" name="registration-attending"
-                    value="yes" style="width:auto; margin:0;"> Yes
+
+              <div
+                id="registration-attending-group"
+                style="
+                  display:flex;
+                  gap:24px;
+                  margin-top:10px;
+                "
+              >
+                <label style="
+                  display:flex;
+                  align-items:center;
+                  gap:8px;
+                  font-weight:600;
+                  cursor:pointer;
+                ">
+                  <input
+                    type="radio"
+                    name="registration-attending"
+                    value="yes"
+                    style="width:auto;margin:0;"
+                  >
+                  Yes
                 </label>
-                <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
-                  <input type="radio" name="registration-attending"
-                    value="no" style="width:auto; margin:0;"> No
+
+                <label style="
+                  display:flex;
+                  align-items:center;
+                  gap:8px;
+                  font-weight:600;
+                  cursor:pointer;
+                ">
+                  <input
+                    type="radio"
+                    name="registration-attending"
+                    value="no"
+                    style="width:auto;margin:0;"
+                  >
+                  No
                 </label>
               </div>
             </div>
-            <div id="registration-error" class="form-err" hidden></div>
 
-            <button type="button" class="btn btn-gold submit-btn"
-              id="registration-submit">
-              Confirm Registration
-            </button>
+            <!-- Registration buttons -->
+            <div style="
+              display:flex;
+              justify-content:flex-end;
+              gap:10px;
+              margin-top:24px;
+            ">
+              <button
+                type="button"
+                class="btn btn-secondary"
+                id="registration-cancel"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                class="btn btn-primary"
+                id="registration-submit"
+              >
+                Confirm Registration
+              </button>
+            </div>
+
           </div>
         </div>
       </div>
     `;
 
-    // BACK: the popup gets its own history entry, so Back closes it
-    // instead of leaving the page.
-    history.pushState({ tab: activeTab, modal: true }, '', '#' + activeTab);
+    const overlay = $('#registration-overlay');
+    const closeButton = $('#registration-close');
+    const cancelButton = $('#registration-cancel');
+    const submitButton = $('#registration-submit');
 
-    // BACK: closing goes back one history step (the popstate handler above
-    // clears the popup). If there is no popup entry, just clear it.
-    const close = () => {
-      if (history.state && history.state.modal) {
-        history.back();
-      } else {
-        $('#modal-root').innerHTML = '';
+    // Close the modal.
+    function closeRegistrationModal() {
+      $('#modal-root').innerHTML = '';
+    }
+
+    closeButton.addEventListener('click', closeRegistrationModal);
+    cancelButton.addEventListener('click', closeRegistrationModal);
+
+    // Close when clicking outside the modal.
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) {
+        closeRegistrationModal();
       }
-    };
-
-    $('#registration-close').addEventListener('click', close);
-
-    $('#registration-overlay').addEventListener('click', clickEvent => {
-      if (clickEvent.target.id === 'registration-overlay') close();
     });
 
-    $('#registration-submit').addEventListener('click', async () => {
-      const error = $('#registration-error');
-      const button = $('#registration-submit');
-
-      const nameInput = $('#registration-name');
-      const courseInput = $('#registration-course');
-      const sectionInput = $('#registration-section');
-      const yearInput = $('#registration-year');
-      const attendingGroup = $('#registration-attending-group');
-      const firstRadio = attendingGroup.querySelector('input[type="radio"]');
-
-      const name = nameInput.value.trim();
-      const course = courseInput.value.trim();
-      const section = sectionInput.value.trim();
-      const year = yearInput.value;
-      const checked = document.querySelector(
+    // Confirm registration.
+    submitButton.addEventListener('click', async function () {
+      const attendingInput = document.querySelector(
         'input[name="registration-attending"]:checked'
       );
-      const attending = checked ? checked.value : '';
 
-      error.hidden = true;
-      clearAllFieldErrors($('#registration-overlay'));
-
-      // ----- missing fields: show the red "required" message on each one -----
-      const missing = [];
-
-      if (!name) missing.push([nameInput, null]);
-      if (!course) missing.push([courseInput, null]);
-      if (!section) missing.push([sectionInput, null]);
-      if (!year) missing.push([yearInput, null]);
-      if (!attending) missing.push([firstRadio, attendingGroup]);
-
-      if (missing.length) {
-        missing.forEach(([input, anchor]) => {
-          showFieldError(input, REQUIRED_MESSAGE, anchor);
-        });
-        missing[0][0].focus();
+      if (!attendingInput) {
+        showToast(
+          'Please select whether you will attend this event.',
+          'error'
+        );
         return;
       }
 
-      // Name must have no numbers.
-      if (!NAME_RE.test(name)) {
-        showFieldError(nameInput, NAME_MESSAGE);
-        nameInput.focus();
-        return;
-      }
+      const attending = attendingInput.value;
 
-      button.disabled = true;
-      button.textContent = 'Submitting...';
+      submitButton.disabled = true;
+      submitButton.textContent = 'Processing...';
 
       try {
-        await api(
-          `/api/events/${encodeURIComponent(event.id)}/register`,
+        const response = await api(
+          `/api/events/${event.id}/register`,
           {
             method: 'POST',
-            body: JSON.stringify({ name, course, section, year, attending })
+            body: JSON.stringify({ attending })
           }
         );
 
-        await loadData();
-        close();
-        renderAll();
+        if (response && response.error) {
+          throw new Error(response.error);
+        }
+
         showToast(
           attending === 'yes'
-            ? 'You are registered for this event!'
-            : 'Thanks! Your response has been recorded.'
+            ? 'Successfully registered for the event!'
+            : 'Your response has been recorded.',
+          'success'
         );
-      } catch (err) {
-        error.textContent = err.message;
-        error.hidden = false;
-        button.disabled = false;
-        button.textContent = 'Confirm Registration';
+
+        closeRegistrationModal();
+
+        // Refresh the data AND the screen so the registration count,
+        // My Registrations list, event slots and notifications
+        // update right away.
+        await loadData();
+        renderAll();
+
+      } catch (error) {
+        console.error('Registration error:', error);
+
+        showToast(
+          error.message || 'Unable to complete registration.',
+          'error'
+        );
+
+        submitButton.disabled = false;
+        submitButton.textContent = 'Confirm Registration';
       }
     });
   }
 
-  // BACK: sidebar and dashboard links now go through setTab()
+  // BACK: sidebar and dashboard links go through setTab()
   document.querySelectorAll('.side-link').forEach(button => {
     button.addEventListener('click', () => {
       setTab(button.dataset.tab);

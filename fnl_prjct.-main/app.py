@@ -4,7 +4,7 @@ import uuid
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from itertools import groupby  
+from itertools import groupby
 import mysql.connector
 from mysql.connector import pooling
 from flask import (
@@ -16,13 +16,18 @@ try:
     load_dotenv()
 except ImportError:  # python-dotenv is optional
     pass
+from backup_route import register_backup_routes
+from dsa_features import merge_sort, WaitlistQueue
+
+waitlist = WaitlistQueue()
+
 # =========================================================
 # CONFIGURATION
 # =========================================================
 ADMIN_EMAIL = os.environ.get(
-    "ADMIN_EMAIL", "admin@gatehub.local"
+    "ADMIN_EMAIL", "admin@ccs.local"
 ).strip().lower()
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "gate2026")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "ccs2026")
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
 APP_TZ = timezone(timedelta(hours=float(os.environ.get("APP_UTC_OFFSET_HOURS", "8"))))
@@ -42,13 +47,20 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = (
     os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 )
+
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 STUDENT_ID_RE = re.compile(r"^\d+(?:-\d+)*$")
 NAME_RE = re.compile(r"^[^\W\d_]+(?:[ .'’\-]+[^\W\d_]+)*\.?$")
-# Allowed year levels for the registration form
+# Allowed year levels and courses for the profile form
 YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
+COURSES = ["BSCS", "BSIT"]
+SECTION_RE = re.compile(r"^[A-Za-z0-9]{1,5}$")
 
 PAST_EVENT_ERROR = "Events must be scheduled for the present or future, not in the past."
+PROFILE_INCOMPLETE_ERROR = (
+    "Please set your course, year level and section "
+    "in My Profile before registering."
+)
 
 
 # =========================================================
@@ -77,6 +89,8 @@ def add_no_cache_headers(response):
 # back if an error happens.
 # =========================================================
 _pool = None
+
+
 def _get_pool():
     global _pool
     if _pool is None:
@@ -86,6 +100,8 @@ def _get_pool():
             **DB_CONFIG,
         )
     return _pool
+
+
 @contextmanager
 def transaction():
     conn = _get_pool().get_connection()
@@ -101,6 +117,22 @@ def transaction():
         conn.close()
 
 
+# FIX: this function did not exist before, which caused the
+# NameError. It returns a raw connection from the pool.
+# The caller must call .close() on it when finished
+# (closing a pooled connection returns it to the pool).
+def get_db_connection():
+    return _get_pool().get_connection()
+
+
+# FIX: registered here, AFTER get_db_connection exists.
+register_backup_routes(
+    app,
+    get_connection=get_db_connection,
+    is_admin=lambda: session.get("role") == "admin",
+)
+
+
 # current time in the app's timezone, as a naive datetime
 def _local_now():
     return datetime.now(APP_TZ).replace(tzinfo=None)
@@ -109,6 +141,8 @@ def _local_now():
 # collapse repeated spaces so "Juan  Dela Cruz" == "Juan Dela Cruz"
 def _normalize_name(name):
     return " ".join(name.split())
+
+
 # =========================================================
 # OOP MODELS
 #
@@ -124,43 +158,62 @@ def _normalize_name(name):
 # =========================================================
 class BaseModel:
     """Parent of every model. Wraps one dictionary."""
+
     def __init__(self, data):
         self._data = data
+
     def get(self, key, default=None):
         return self._data.get(key, default)
+
     def to_dict(self):
         return self._data
+
+
 # ---------------- Accounts ----------------
 class Account(BaseModel, ABC):
     """Abstract parent for every kind of logged-in user."""
     role = "account"
+
     @abstractmethod
     def to_public(self):
         """Return public account fields only (never password hashes)."""
+
+
 class Participant(Account):
     role = "participant"
+
     def to_public(self):
         return {
             "id": self.get("id", ""),
             "student_id": self.get("student_id", ""),
             "name": self.get("name", ""),
             "email": self.get("email", ""),
+            "course": self.get("course", "") or "",
+            "section": self.get("section", "") or "",
+            "year": self.get("year", "") or "",
             "role": self.role,
             "createdAt": self.get("createdAt"),
         }
+
+
 class Admin(Account):
     role = "admin"
+
     def to_public(self):
         return {
             "email": self.get("email", ADMIN_EMAIL),
             "role": self.role,
         }
+
+
 # ---------------- Events ----------------
 class Event(BaseModel, ABC):
     """Abstract parent for events. Each status decides if it is finished."""
+
     @abstractmethod
     def is_finished(self):
         """Return True when the event is finished."""
+
     @staticmethod
     def from_dict(data):
         """Pick the right Event subclass from the saved status."""
@@ -170,17 +223,26 @@ class Event(BaseModel, ABC):
         if status == "reopened":
             return ReopenedEvent(data)
         return UpcomingEvent(data)
+
+
 class FinishedEvent(Event):
     """The admin marked the event as done."""
+
     def is_finished(self):
         return True
+
+
 class ReopenedEvent(Event):
     """The admin reopened it, so it will not auto-finish again until
     the admin clicks Mark as Done."""
+
     def is_finished(self):
         return False
+
+
 class UpcomingEvent(Event):
     """Finishes automatically once its date and time have passed."""
+
     def is_finished(self):
         try:
             event_time = datetime.strptime(
@@ -190,28 +252,39 @@ class UpcomingEvent(Event):
             return event_time < _local_now()
         except (ValueError, TypeError):
             return False
+
+
 # ---------------- Registrations ----------------
 class Registration(BaseModel, ABC):
     """Abstract parent for registrations. Each type decides its spots."""
+
     @abstractmethod
     def spots_used(self):
         """Return how many event spots this registration uses."""
+
     @staticmethod
     def from_dict(data):
         """Pick the right Registration subclass from the answer."""
         if str(data.get("attending", "yes")).lower() == "no":
             return DeclinedRegistration(data)
         return AttendingRegistration(data)
+
+
 class AttendingRegistration(Registration):
     def spots_used(self):
         try:
             return max(0, int(self.get("quantity", 1)))
         except (ValueError, TypeError):
             return 1
+
+
 class DeclinedRegistration(Registration):
     """A 'no' answer uses no spot."""
+
     def spots_used(self):
         return 0
+
+
 # =========================================================
 # ROW -> JSON HELPERS
 # =========================================================
@@ -220,8 +293,12 @@ def _iso(value):
     if value is None:
         return None
     return value.replace(tzinfo=timezone.utc).isoformat()
+
+
 def _utc_now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def _fmt_time(value):
     """MySQL TIME comes back as timedelta. Return 'HH:MM'."""
     if value is None:
@@ -232,8 +309,12 @@ def _fmt_time(value):
     if hasattr(value, "strftime"):
         return value.strftime("%H:%M")
     return str(value)[:5]
+
+
 def _parse_date(text):
     return datetime.strptime(text, "%Y-%m-%d").date()
+
+
 def _parse_time(text):
     for pattern in ("%H:%M", "%H:%M:%S"):
         try:
@@ -247,14 +328,22 @@ def _parse_time(text):
 def _is_in_past(event_date, event_time):
     now = _local_now().replace(second=0, microsecond=0)
     return datetime.combine(event_date, event_time) < now
+
+
 def user_to_dict(row):
     return {
         "id": row["id"],
         "student_id": row["student_id"],
         "name": row["name"],
         "email": row["email"],
+        # class info saved from the My Profile page
+        "course": row.get("course") or "",
+        "section": row.get("section") or "",
+        "year": row.get("year_level") or "",
         "createdAt": _iso(row["created_at"]),
     }
+
+
 # Event query that also counts the reserved spots.
 EVENT_SELECT = """
     SELECT e.*,
@@ -265,6 +354,8 @@ EVENT_SELECT = """
            ), 0) AS registered
     FROM events e
 """
+
+
 def event_to_dict(row):
     event = {
         "id": row["id"],
@@ -281,11 +372,15 @@ def event_to_dict(row):
     if row.get("finished_at"):
         event["finishedAt"] = _iso(row["finished_at"])
     return event
+
+
 REGISTRATION_SELECT = """
     SELECT r.*, e.title AS event_title
     FROM registrations r
     JOIN events e ON e.id = r.event_id
 """
+
+
 def registration_to_dict(row):
     return {
         "id": row["id"],
@@ -303,8 +398,12 @@ def registration_to_dict(row):
         "attendanceStatus": row["attendance_status"],
         "registeredAt": _iso(row["registered_at"]),
     }
+
+
 def _get_json():
     return request.get_json(silent=True) or {}
+
+
 # =========================================================
 # QUERY HELPERS
 # =========================================================
@@ -315,9 +414,13 @@ def _fetch_event(cursor, event_id, lock=False):
     )
     row = cursor.fetchone()
     return event_to_dict(row) if row else None
+
+
 def _fetch_user_by_id(cursor, user_id):
     cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
     return cursor.fetchone()
+
+
 def _event_reserved_count(cursor, event_id):
     """Spots used by all registrations of one event."""
     cursor.execute(
@@ -328,14 +431,154 @@ def _event_reserved_count(cursor, event_id):
         Registration.from_dict(row).spots_used()
         for row in cursor.fetchall()
     )
+
+
 def _is_finished(event):
     """Finished if the admin marked it done, or its date and time passed."""
     return Event.from_dict(event).is_finished()
+
+
+# =========================================================
+# NOTIFICATIONS: helpers
+# =========================================================
+def _notify_user(cursor, user_id, event_id, ntype, message):
+    """One notification for one student."""
+    cursor.execute(
+        """
+        INSERT INTO notifications
+            (id, user_id, event_id, type, message, is_read, created_at)
+        VALUES (%s, %s, %s, %s, %s, 0, %s)
+        """,
+        ("n" + uuid.uuid4().hex[:16], user_id, event_id, ntype,
+         message[:500], _utc_now()),
+    )
+
+
+def _notify_all_students(cursor, event_id, ntype, message):
+    """One notification for every student account."""
+    cursor.execute(
+        """
+        INSERT INTO notifications
+            (id, user_id, event_id, type, message, is_read, created_at)
+        SELECT CONCAT('n', LEFT(REPLACE(UUID(), '-', ''), 16)),
+               u.id, %s, %s, %s, 0, %s
+        FROM users u
+        """,
+        (event_id, ntype, message[:500], _utc_now()),
+    )
+
+
+def _notify_registered(cursor, event_id, ntype, message):
+    """One notification for every student registered (Yes) for an event."""
+    cursor.execute(
+        """
+        INSERT INTO notifications
+            (id, user_id, event_id, type, message, is_read, created_at)
+        SELECT CONCAT('n', LEFT(REPLACE(UUID(), '-', ''), 16)),
+               r.user_id, %s, %s, %s, 0, %s
+        FROM (
+            SELECT DISTINCT user_id FROM registrations
+            WHERE event_id = %s AND attending = 'yes'
+        ) r
+        """,
+        (event_id, ntype, message[:500], _utc_now(), event_id),
+    )
+
+
+def _ensure_reminders(cursor, user_id):
+    """Create a 'happening within 24 hours' reminder once per event.
+    Runs whenever the student loads their notifications, so no
+    background scheduler is needed."""
+    cursor.execute(
+        """
+        SELECT e.id, e.title, e.event_date, e.event_time
+        FROM registrations r
+        JOIN events e ON e.id = r.event_id
+        WHERE r.user_id = %s AND r.attending = 'yes'
+          AND e.status <> 'finished'
+        """,
+        (user_id,),
+    )
+    now = _local_now()
+    for row in cursor.fetchall():
+        try:
+            when = datetime.combine(
+                row["event_date"], _parse_time(_fmt_time(row["event_time"]))
+            )
+        except ValueError:
+            continue
+        if not (now < when <= now + timedelta(hours=24)):
+            continue
+        cursor.execute(
+            """
+            SELECT 1 FROM notifications
+            WHERE user_id = %s AND event_id = %s AND type = 'reminder'
+            """,
+            (user_id, row["id"]),
+        )
+        if cursor.fetchone():
+            continue
+        _notify_user(
+            cursor, user_id, row["id"], "reminder",
+            f'Reminder: "{row["title"]}" starts on '
+            f'{row["event_date"].isoformat()} at {_fmt_time(row["event_time"])}.',
+        )
+
+
+def _promote_from_waitlist(cursor, event_id):
+    """When a spot opens, register the first person in the queue."""
+    event = _fetch_event(cursor, event_id, lock=True)
+    if not event or _is_finished(event):
+        return None
+    if int(event["capacity"]) - _event_reserved_count(cursor, event_id) < 1:
+        return None
+    while True:
+        user_id = waitlist.pop_next(event_id)
+        if user_id is None:
+            return None
+        user = _fetch_user_by_id(cursor, user_id)
+        if not user:
+            continue
+        cursor.execute(
+            "SELECT 1 FROM registrations WHERE event_id = %s AND user_id = %s",
+            (event_id, user_id),
+        )
+        if cursor.fetchone():
+            continue
+        course = (user.get("course") or "").strip()
+        section = (user.get("section") or "").strip()
+        year = (user.get("year_level") or "").strip()
+        if not all([course, section, year]):
+            continue
+        cursor.execute(
+            """
+            INSERT INTO registrations
+                (id, event_id, user_id, student_id, name, email,
+                 course, section, year_level, attending, quantity,
+                 attendance_status, registered_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'yes', 1,
+                    'registered', %s)
+            """,
+            (
+                "reg" + uuid.uuid4().hex[:10], event_id, user_id,
+                user["student_id"], user["name"], user["email"],
+                course, section, year, _utc_now(),
+            ),
+        )
+        _notify_user(
+            cursor, user_id, event_id, "waitlist_promoted",
+            f'A spot opened up! You are now registered for "{event["title"]}".',
+        )
+        return user_id
+
+
 # =========================================================
 # AUTHENTICATION AND PERMISSIONS
 # =========================================================
 def _current_role():
     return session.get("role")
+
+
 def _require_login():
     if not session.get("user_id"):
         return jsonify({"error": "Please log in first."}), 401
@@ -344,15 +587,21 @@ def _require_login():
             "error": "Participant account required."
         }), 403
     return None
+
+
 def _require_admin():
     if _current_role() != "admin":
         return jsonify({
             "error": "Admin access required."
         }), 403
     return None
+
+
 def _safe_user(user_dict):
     """Return public account fields only. Never expose password hashes."""
     return Participant(user_dict).to_public()
+
+
 # =========================================================
 # PAGES
 # =========================================================
@@ -364,12 +613,16 @@ def index():
     if _current_role() == "admin":
         return redirect("/admin")
     return render_template("index.html")
+
+
 @app.route("/admin")
 def admin_page():
     # Anyone who is not signed in as the admin goes back to sign-in.
     if _current_role() != "admin":
         return redirect("/")
     return render_template("admin.html")
+
+
 # =========================================================
 # ADMIN: PRINTABLE ATTENDANCE SHEET
 # =========================================================
@@ -399,7 +652,10 @@ def generate_attendance_sheet(event_id):
             """,
             (event_id,),
         )
-        participants = cursor.fetchall()
+        participants = merge_sort(
+            cursor.fetchall(),
+            key=lambda x: (x["year_level"], x["course"], x["section"], x["name"]),
+        )
 
     grouped_participants = {}
     for key, group in groupby(
@@ -414,6 +670,8 @@ def generate_attendance_sheet(event_id):
         is_finished=event_is_finished,
         grouped_participants=grouped_participants,
     )
+
+
 # =========================================================
 # AUTH: SIGN UP (participants only)
 #
@@ -510,6 +768,8 @@ def register_account():
         "user": _safe_user(user_to_dict(user)),
         "role": "participant",
     }), 201
+
+
 # =========================================================
 # AUTH: ONE SHARED LOGIN FOR ADMIN AND PARTICIPANTS
 # =========================================================
@@ -553,6 +813,8 @@ def login():
         "role": "participant",
         "user": _safe_user(user_to_dict(user)),
     })
+
+
 @app.route("/api/auth/me", methods=["GET"])
 def get_current_user():
     role = _current_role()
@@ -579,14 +841,69 @@ def get_current_user():
         "role": None,
         "user": None,
     })
+
+
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
     session.clear()
     return jsonify({"message": "Logged out successfully."})
+
+
 @app.route("/api/admin/logout", methods=["POST"])
 def admin_logout():
     session.clear()
     return jsonify({"ok": True})
+
+
+# =========================================================
+# PARTICIPANT: SAVE CLASS INFORMATION (course, year, section)
+#
+# Saved on the account. Registering for an event uses these
+# values automatically, so the registration form no longer
+# asks for them.
+# =========================================================
+@app.route("/api/profile", methods=["PUT"])
+def update_profile():
+    permission_error = _require_login()
+    if permission_error:
+        return permission_error
+    body = _get_json()
+    course = str(body.get("course", "")).strip().upper()
+    year = str(body.get("year", "")).strip()
+    section = str(body.get("section", "")).strip().upper()
+    if not all([course, year, section]):
+        return jsonify({
+            "error": "Course, year level and section are required."
+        }), 400
+    if course not in COURSES:
+        return jsonify({"error": "Choose a valid course."}), 400
+    if year not in YEAR_LEVELS:
+        return jsonify({"error": "Choose a valid year level."}), 400
+    if not SECTION_RE.fullmatch(section):
+        return jsonify({
+            "error": "Section can only contain letters or numbers."
+        }), 400
+    with transaction() as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET course = %s, section = %s, year_level = %s
+            WHERE id = %s
+            """,
+            (course, section, year, session["user_id"]),
+        )
+        user = _fetch_user_by_id(cursor, session["user_id"])
+        if not user:
+            session.clear()
+            return jsonify({
+                "error": "Account not found. Please log in again."
+            }), 401
+    return jsonify({
+        "message": "Profile saved.",
+        "user": _safe_user(user_to_dict(user)),
+    })
+
+
 # =========================================================
 # PUBLIC EVENTS AND CATEGORIES
 # =========================================================
@@ -602,6 +919,8 @@ def get_events():
         event["isFinished"] = _is_finished(event)
         events.append(event)
     return jsonify(events)
+
+
 @app.route("/api/categories", methods=["GET"])
 def get_categories():
     # Categories are simply the ones used by existing events.
@@ -611,6 +930,8 @@ def get_categories():
         )
         names = [row["category"] for row in cursor.fetchall()]
     return jsonify(names)
+
+
 # =========================================================
 # ADMIN: CREATE EVENTS
 # =========================================================
@@ -673,7 +994,14 @@ def create_event():
             ),
         )
         event = _fetch_event(cursor, event_id)
+        # tell every student about the new event
+        _notify_all_students(
+            cursor, event_id, "event_created",
+            f'New event: "{title}" on {event_date.isoformat()} at {location}.',
+        )
     return jsonify(event), 201
+
+
 # =========================================================
 # ADMIN: UPDATE EVENT
 # =========================================================
@@ -739,6 +1067,26 @@ def update_event(event_id):
                     f"{reserved} already reserved spots."
                 )
             }), 400
+
+        # NOTIFICATIONS: work out what changed (event still holds the
+        # OLD values here) and tell the students registered for it.
+        changes = []
+        if title != event["title"]:
+            changes.append("title")
+        if event_date.isoformat() != event["date"]:
+            changes.append("date")
+        if event_time.strftime("%H:%M") != event["time"]:
+            changes.append("time")
+        if location != event["location"]:
+            changes.append("location")
+        if changes:
+            _notify_registered(
+                cursor, event_id, "event_updated",
+                f'"{title}" was updated ({", ".join(changes)} changed). '
+                f'Now: {event_date.isoformat()} at '
+                f'{event_time.strftime("%H:%M")}, {location}.',
+            )
+
         cursor.execute(
             """
             UPDATE events
@@ -757,6 +1105,8 @@ def update_event(event_id):
         "message": "Event updated successfully.",
         "event": event,
     })
+
+
 # =========================================================
 # ADMIN: DELETE EVENT
 # =========================================================
@@ -783,7 +1133,15 @@ def delete_event(event_id):
                 )
             }), 409
         cursor.execute("DELETE FROM events WHERE id = %s", (event_id,))
+        # tell students an upcoming event was cancelled
+        if not _is_finished(event):
+            _notify_all_students(
+                cursor, None, "event_cancelled",
+                f'The event "{event["title"]}" has been cancelled.',
+            )
     return jsonify({"message": "Event deleted successfully."})
+
+
 # =========================================================
 # ADMIN: MARK EVENT AS FINISHED / REOPEN EVENT
 # =========================================================
@@ -804,6 +1162,8 @@ def finish_event(event_id):
         if cursor.rowcount == 0 and not _fetch_event(cursor, event_id):
             return jsonify({"error": "Event not found."}), 404
     return jsonify({"message": "Event marked as finished."})
+
+
 @app.route("/api/events/<event_id>/reopen", methods=["POST"])
 def reopen_event(event_id):
     permission_error = _require_admin()
@@ -821,6 +1181,8 @@ def reopen_event(event_id):
         if cursor.rowcount == 0 and not _fetch_event(cursor, event_id):
             return jsonify({"error": "Event not found."}), 404
     return jsonify({"message": "Event reopened."})
+
+
 # =========================================================
 # ADMIN: LIST PARTICIPANT ACCOUNTS
 # =========================================================
@@ -833,6 +1195,8 @@ def get_participant_accounts():
         cursor.execute("SELECT * FROM users ORDER BY created_at")
         users = [_safe_user(user_to_dict(row)) for row in cursor.fetchall()]
     return jsonify(users)
+
+
 # =========================================================
 # ADMIN: DELETE A PARTICIPANT ACCOUNT
 # =========================================================
@@ -843,12 +1207,16 @@ def delete_user(user_id):
         return permission_error
 
     with transaction() as cursor:
-        # Delete the user's registrations first, then the account
+        # Delete the user's registrations and notifications first,
+        # then the account
         cursor.execute("DELETE FROM registrations WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM notifications WHERE user_id = %s", (user_id,))
         cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
         if cursor.rowcount == 0:
             return jsonify({"error": "User not found."}), 404
     return jsonify({"success": True, "message": "User deleted successfully"})
+
+
 # =========================================================
 # ADMIN: VIEW ALL REGISTRATIONS
 # =========================================================
@@ -863,8 +1231,13 @@ def get_all_registrations():
             registration_to_dict(row) for row in cursor.fetchall()
         ]
     return jsonify(registrations)
+
+
 # =========================================================
 # PARTICIPANT: REGISTER FOR A FREE EVENT
+#
+# Course, section and year level are NOT taken from the form.
+# They come from the participant's saved profile.
 # =========================================================
 @app.route("/api/events/<event_id>/register", methods=["POST"])
 def reserve_spot(event_id):
@@ -873,24 +1246,7 @@ def reserve_spot(event_id):
         return permission_error
     body = _get_json()
     user_id = session["user_id"]
-    # name is no longer taken from the form; the account's name is used
-    course = str(body.get("course", "")).strip()
-    section = str(body.get("section", "")).strip()
-    year = str(body.get("year", "")).strip()
     attending = str(body.get("attending", "")).strip().lower()
-    if not all([course, section, year, attending]):
-        return jsonify({
-            "error": (
-                "Course, section, year level, and your "
-                "attendance answer are required."
-            )
-        }), 400
-    if len(course) > 100 or len(section) > 30:
-        return jsonify({
-            "error": "Course or section is too long."
-        }), 400
-    if year not in YEAR_LEVELS:
-        return jsonify({"error": "Choose a valid year level."}), 400
     if attending not in ("yes", "no"):
         return jsonify({
             "error": "Please answer Yes or No."
@@ -904,6 +1260,12 @@ def reserve_spot(event_id):
                 return jsonify({
                     "error": "Account not found. Please log in again."
                 }), 401
+            # Class info comes from the saved profile, not the form.
+            course = (user.get("course") or "").strip()
+            section = (user.get("section") or "").strip()
+            year = (user.get("year_level") or "").strip()
+            if not all([course, section, year]):
+                return jsonify({"error": PROFILE_INCOMPLETE_ERROR}), 400
             # Lock the event row so two people cannot take the last spot.
             event = _fetch_event(cursor, event_id, lock=True)
             if not event:
@@ -928,9 +1290,16 @@ def reserve_spot(event_id):
             if attending == "yes":
                 reserved = _event_reserved_count(cursor, event_id)
                 if int(event["capacity"]) - reserved < 1:
+                    position = waitlist.join(event_id, user_id)
                     return jsonify({
-                        "error": "No spots are available for this event."
-                    }), 400
+                        "message": (
+                            f"This event is full. You are #{position} "
+                            "on the waitlist and will be registered "
+                            "automatically if a spot opens."
+                        ),
+                        "waitlisted": True,
+                        "position": position,
+                    }), 202
             cursor.execute(
                 """
                 INSERT INTO registrations
@@ -951,6 +1320,13 @@ def reserve_spot(event_id):
                 (registration_id,),
             )
             registration = registration_to_dict(cursor.fetchone())
+            # confirmation notice for the student
+            if attending == "yes":
+                _notify_user(
+                    cursor, user_id, event_id, "registration",
+                    f'You are registered for "{event["title"]}" '
+                    f'on {event["date"]}.',
+                )
     except mysql.connector.IntegrityError:
         return jsonify({
             "error": "You have already registered for this event."
@@ -963,6 +1339,8 @@ def reserve_spot(event_id):
         ),
         "registration": registration,
     }), 201
+
+
 # =========================================================
 # PARTICIPANT: VIEW OWN REGISTRATIONS
 # =========================================================
@@ -981,6 +1359,8 @@ def get_my_registrations():
             registration_to_dict(row) for row in cursor.fetchall()
         ]
     return jsonify(registrations)
+
+
 # =========================================================
 # PARTICIPANT: CANCEL OWN REGISTRATION
 # =========================================================
@@ -1016,7 +1396,17 @@ def cancel_registration(registration_id):
         cursor.execute(
             "DELETE FROM registrations WHERE id = %s", (registration_id,)
         )
+        # a spot opened up: promote the first person in the waitlist
+        if row["attending"] == "yes":
+            _promote_from_waitlist(cursor, row["event_id"])
+        # confirmation notice for the student who cancelled
+        _notify_user(
+            cursor, user_id, row["event_id"], "registration_cancelled",
+            f'You cancelled your registration for "{row["event_title"]}".',
+        )
     return jsonify({"message": "Reservation cancelled."})
+
+
 # =========================================================
 # ADMIN: UPDATE ATTENDANCE
 # =========================================================
@@ -1052,6 +1442,111 @@ def update_attendance(registration_id):
         "message": "Attendance updated.",
         "registration": registration,
     })
+
+
+# =========================================================
+# NOTIFICATIONS: routes (participant side)
+# =========================================================
+@app.route("/api/notifications", methods=["GET"])
+def get_notifications():
+    permission_error = _require_login()
+    if permission_error:
+        return permission_error
+    user_id = session["user_id"]
+    with transaction() as cursor:
+        _ensure_reminders(cursor, user_id)
+        cursor.execute(
+            """
+            SELECT id, event_id, type, message, is_read, created_at
+            FROM notifications
+            WHERE user_id = %s
+            ORDER BY created_at DESC, id DESC
+            LIMIT 50
+            """,
+            (user_id,),
+        )
+        rows = cursor.fetchall()
+        cursor.execute(
+            "SELECT COUNT(*) AS total FROM notifications "
+            "WHERE user_id = %s AND is_read = 0",
+            (user_id,),
+        )
+        unread = cursor.fetchone()["total"]
+    return jsonify({
+        "items": [
+            {
+                "id": r["id"],
+                "eventId": r["event_id"],
+                "type": r["type"],
+                "message": r["message"],
+                "isRead": bool(r["is_read"]),
+                "createdAt": _iso(r["created_at"]),
+            }
+            for r in rows
+        ],
+        "unread": int(unread),
+    })
+
+
+@app.route("/api/notifications/read-all", methods=["POST"])
+def read_all_notifications():
+    permission_error = _require_login()
+    if permission_error:
+        return permission_error
+    with transaction() as cursor:
+        cursor.execute(
+            "UPDATE notifications SET is_read = 1 WHERE user_id = %s",
+            (session["user_id"],),
+        )
+    return jsonify({"message": "All notifications marked as read."})
+
+
+@app.route("/api/notifications/<notification_id>/read", methods=["POST"])
+def read_notification(notification_id):
+    permission_error = _require_login()
+    if permission_error:
+        return permission_error
+    with transaction() as cursor:
+        cursor.execute(
+            "UPDATE notifications SET is_read = 1 "
+            "WHERE id = %s AND user_id = %s",
+            (notification_id, session["user_id"]),
+        )
+    return jsonify({"message": "Marked as read."})
+
+
+# =========================================================
+# ONE-TIME DATABASE UPDATES
+#
+# Run every time the app starts. They only add what is
+# missing, so they are safe to leave in.
+# =========================================================
+PROFILE_COLUMNS = {
+    "course": "VARCHAR(100) NOT NULL DEFAULT ''",
+    "section": "VARCHAR(30) NOT NULL DEFAULT ''",
+    "year_level": "VARCHAR(20) NOT NULL DEFAULT ''",
+}
+
+
+def ensure_profile_columns():
+    with transaction() as cursor:
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME AS col
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'users'
+            """,
+            (DB_CONFIG["database"],),
+        )
+        existing = {row["col"] for row in cursor.fetchall()}
+        for column, definition in PROFILE_COLUMNS.items():
+            if column not in existing:
+                cursor.execute(
+                    f"ALTER TABLE users ADD COLUMN {column} {definition}"
+                )
+
+
+
 # =========================================================
 # START APPLICATION
 # =========================================================

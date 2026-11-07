@@ -1,0 +1,330 @@
+/* =====================================================================
+   ADMIN LOOK FOR THE PARTICIPANT PAGE (index)
+   Link this AFTER styles.css so it overrides the older rules.
+   It does not touch the sign-in screen (#auth-view).
+   ===================================================================== */
+
+:root {
+  --font-body: "Plus Jakarta Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --lav: #F3EEF9;
+  --card-shadow: 0 6px 18px rgba(33, 11, 44, 0.08);
+}
+
+/* ----- page background: soft lavender with light corners ----- */
+body.app-body {
+  font-family: var(--font-body);
+  background:
+    radial-gradient(900px 500px at 100% 0%, #E9DDF7 0%, transparent 60%),
+    radial-gradient(700px 500px at 0% 100%, #EFE6FA 0%, transparent 60%),
+    var(--lav);
+}
+
+#participant-app h1,
+#participant-app h2,
+#participant-app h3,
+#participant-app .ticket-title,
+#participant-app .stub-price,
+#participant-app .stat-card-number {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+/* ----- sidebar ----- */
+#participant-app .sidebar {
+  background: linear-gradient(180deg, #2B0F3D 0%, #1B0728 55%, #17061F 100%);
+  border-right: 3px solid var(--gold);
+  padding: 22px 16px 18px;
+}
+
+#participant-app .sidebar-brand {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 0 6px 20px;
+  margin-bottom: 24px;
+  gap: 12px;
+}
+
+#participant-app .sidebar-logo-img {
+  box-shadow: 0 0 0 3px rgba(255, 209, 102, 0.35);
+}
+
+#participant-app .sidebar-brand-text strong {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  color: #fff;
+}
+
+#participant-app .sidebar-brand-text span {
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+#participant-app .sidebar-label {
+  color: #B9A3D6;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  margin-bottom: 14px;
+}
+
+#participant-app .sidebar-nav {
+  gap: 8px;
+}
+
+#participant-app .side-link {
+  position: relative;
+  padding: 13px 16px;
+  border-radius: 10px;
+  color: #EDE3F8;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 500;
+  height: auto;
+  line-height: 1.3;
+}
+
+#participant-app .side-link:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+#participant-app .side-link.active {
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* gold marker on the active item */
+#participant-app .side-link.active::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--gold);
+}
+
+/* account card at the bottom */
+#participant-app .sidebar-account {
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 16px 0 0;
+}
+
+#participant-app .sidebar-account .account-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+#participant-app .sidebar-account .account-name {
+  font-family: var(--font-body);
+  font-weight: 700;
+}
+
+/* ----- main area + top header (flat, no purple banner) ----- */
+#participant-app .main-area {
+  padding: 34px 36px 0;
+}
+
+#participant-app .topbar {
+  background: transparent !important;
+  box-shadow: none;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin-bottom: 22px;
+  overflow: visible;
+}
+
+#participant-app .topbar::before,
+#participant-app .topbar::after {
+  display: none;
+}
+
+#participant-app .topbar h1,
+#participant-app .topbar-heading h1 {
+  color: var(--navy) !important;
+  font-family: var(--font-display) !important;
+  font-size: 2rem !important;
+}
+
+#participant-app .topbar-heading h1 span,
+#participant-app .topbar h1 span {
+  color: var(--navy) !important;
+}
+
+#participant-app .topbar .eyebrow {
+  color: var(--muted) !important;
+}
+
+#participant-app .header-user {
+  background: #fff;
+  color: var(--navy) !important;
+  border: 1px solid var(--line);
+  box-shadow: var(--card-shadow);
+}
+
+/* ----- stat cards: white, glow top-right, colored bar at the bottom ----- */
+#participant-app .dashboard-card,
+#participant-app .profile-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #EBE2F5;
+  border-radius: 16px;
+  padding: 22px 26px 26px;
+  box-shadow: var(--card-shadow);
+}
+
+#participant-app .dashboard-card::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: -30px;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(188, 150, 230, 0.45) 0%, transparent 68%);
+  pointer-events: none;
+}
+
+#participant-app .dashboard-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 5px;
+  background: linear-gradient(90deg, var(--navy), #9B6FD0);
+}
+
+#participant-app .stats-grid .dashboard-card:nth-child(2)::before {
+  background: radial-gradient(circle, rgba(255, 209, 102, 0.50) 0%, transparent 68%);
+}
+
+#participant-app .stats-grid .dashboard-card:nth-child(2)::after {
+  background: linear-gradient(90deg, #BC96E6, var(--gold));
+}
+
+#participant-app .stat-card-icon {
+  display: none;
+}
+
+#participant-app .stat-card-top {
+  justify-content: flex-start;
+}
+
+#participant-app .stat-card-label {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+#participant-app .stat-card-number {
+  font-size: 3.2rem;
+  font-weight: 800;
+  margin-top: 6px;
+}
+
+/* ----- big white panels ----- */
+#participant-app .content-section,
+#participant-app .welcome-banner {
+  border-radius: 18px;
+}
+
+#participant-app #events-view > .content-section,
+#participant-app #mine-view > .content-section,
+#participant-app #profile-view > .content-section,
+#participant-app #attended-view > .content-section {
+  background: #fff;
+  border: 1px solid #EBE2F5;
+  box-shadow: var(--card-shadow);
+  padding: 26px 30px;
+}
+
+/* ----- event cards: gradient strip on the left, serif title ----- */
+#participant-app .ticket-card {
+  border: 1px solid #E6DAF3;
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+#participant-app .ticket-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: linear-gradient(180deg, var(--gold), #BC96E6);
+}
+
+#participant-app .ticket-main {
+  padding: 22px 24px 22px 28px;
+}
+
+#participant-app .ticket-title {
+  font-size: 1.5rem;
+}
+
+#participant-app .ticket-meta {
+  color: var(--ink);
+}
+
+#participant-app .cat-tag {
+  background: #FFE9A8;
+  color: #5E4400;
+  font-weight: 700;
+}
+
+/* ----- buttons, chips, search ----- */
+#participant-app .btn-ghost {
+  background: #fff;
+  color: var(--navy);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--card-shadow);
+}
+
+#participant-app .btn {
+  border-radius: 10px;
+}
+
+#participant-app .chip {
+  border-radius: 999px;
+}
+
+#participant-app .search-wrap {
+  border-radius: 999px;
+  border-color: var(--line);
+  box-shadow: var(--card-shadow);
+}
+
+/* ----- welcome banner: keep, but match the sidebar gradient ----- */
+#participant-app .welcome-banner {
+  background: linear-gradient(120deg, #2B0F3D 0%, #4A2A6B 60%, #BC96E6 130%);
+  box-shadow: var(--card-shadow);
+}
+
+/* ----- small screens ----- */
+@media (max-width: 800px) {
+  #participant-app .main-area {
+    padding: 20px 16px 0;
+  }
+
+  #participant-app .side-link.active::before {
+    display: none;
+  }
+
+  #participant-app .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

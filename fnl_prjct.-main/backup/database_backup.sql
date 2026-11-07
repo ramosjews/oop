@@ -44,7 +44,7 @@ CREATE TABLE `events` (
 
 LOCK TABLES `events` WRITE;
 /*!40000 ALTER TABLE `events` DISABLE KEYS */;
-INSERT INTO `events` VALUES ('ev52fa8251c2','CCS Intrams','Sports','2026-12-13','09:00:00','LSPU',100,'asdasdasdad','upcoming',NULL,'2026-11-04 03:42:40'),('ev898306f923','CCS Night','Party','2026-10-10','22:00:00','AC',100,'asdadsad','upcoming',NULL,'2026-11-02 05:46:07');
+INSERT INTO `events` VALUES ('ev52fa8251c2','CCS Intrams','Sports','2026-12-13','09:00:00','LSPU',100,'asdasdasdad','upcoming',NULL,'2026-11-04 03:42:40'),('ev6db8c67727','Year End Party','Party','2026-12-31','09:00:00','Activity Center',100,'Year End celebration','upcoming',NULL,'2026-11-04 07:00:06'),('ev898306f923','CCS Night','Party','2026-10-10','22:00:00','AC',100,'asdadsad','upcoming',NULL,'2026-11-02 05:46:07');
 /*!40000 ALTER TABLE `events` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -83,7 +83,7 @@ CREATE TABLE `registrations` (
 
 LOCK TABLES `registrations` WRITE;
 /*!40000 ALTER TABLE `registrations` DISABLE KEYS */;
-INSERT INTO `registrations` VALUES ('reg10b1b926bc','ev52fa8251c2','usr91f2876c7120','0124-1097','Jewel Ramos','cattojeymagda@gmail.com','BSCS','A','2nd Year','no',1,'attended','2026-11-04 03:43:47');
+INSERT INTO `registrations` VALUES ('reg08548275d5','ev52fa8251c2','usr04ae9eef4133','0212-0192','Anne Moral','anne@gmail.com','BSCS','A','3rd Year','yes',1,'registered','2026-11-04 06:56:32'),('reg10b1b926bc','ev52fa8251c2','usr91f2876c7120','0124-1097','Jewel Ramos','cattojeymagda@gmail.com','BSCS','A','2nd Year','no',1,'attended','2026-11-04 03:43:47'),('reg715d944641','ev52fa8251c2','usra77fb64a1dcc','0122-0177','Alyanna Villanueva','alyana@gmail.com','BSIT','B','1st Year','yes',1,'registered','2026-11-04 06:55:08'),('reg8720883f2b','ev52fa8251c2','usr55ed373e6318','0293-0281','Chloe Abadier','chloe@gmail.com','BSCS','B','3rd Year','yes',1,'registered','2026-11-04 06:57:55');
 /*!40000 ALTER TABLE `registrations` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -113,7 +113,7 @@ CREATE TABLE `users` (
 
 LOCK TABLES `users` WRITE;
 /*!40000 ALTER TABLE `users` DISABLE KEYS */;
-INSERT INTO `users` VALUES ('usr91f2876c7120','0124-1097','Jewel Ramos','cattojeymagda@gmail.com','scrypt:32768:8:1$fq2aBuZrWKAQZsWv$da30c31eb5b4734b27abec5e9bb10bd2cc68f6570f6c934812013c1f4264528988adaeb5791009f47783e073a3ce5ef779f9759420b33890f90d78c30ea6f502','2026-11-01 11:08:08');
+INSERT INTO `users` VALUES ('usr04ae9eef4133','0212-0192','Anne Moral','anne@gmail.com','scrypt:32768:8:1$ZsY28Lzu8T1KBxxb$1ba4160c25cf748b505ea89223523088ba00c11d50990639e58f8ffe59a0d5310eae526bd8dd3e948f69d66be1401c8a2488bc42056a55586e231038d52c238f','2026-11-04 06:56:08'),('usr55ed373e6318','0293-0281','Chloe Abadier','chloe@gmail.com','scrypt:32768:8:1$DFiQcZZrlP7pektk$9c674313886b776847edf89f3064000263685e6212569bde67ca83a365d798d0031f7233e35c5996db83126cf61abc5e350cd319541b1adf0e700fedd2e55976','2026-11-04 06:57:21'),('usr91f2876c7120','0124-1097','Jewel Ramos','cattojeymagda@gmail.com','scrypt:32768:8:1$fq2aBuZrWKAQZsWv$da30c31eb5b4734b27abec5e9bb10bd2cc68f6570f6c934812013c1f4264528988adaeb5791009f47783e073a3ce5ef779f9759420b33890f90d78c30ea6f502','2026-11-01 11:08:08'),('usra77fb64a1dcc','0122-0177','Alyanna Villanueva','alyana@gmail.com','scrypt:32768:8:1$t2WAOj0OiuhtX45L$416e694b2a04105d2731d5c6704b3ec166d5cbcd5d9b03372e7f678de2c7569ee4b5b6312c22b3997119a6153d213553a24ac3701138a6b46311b95ed2ee6e65','2026-11-04 06:54:44');
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -126,4 +126,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-11-04 14:36:15
+-- Dump completed on 2026-11-04 15:10:46
